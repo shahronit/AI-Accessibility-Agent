@@ -1,36 +1,71 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Accessibility AI Scanner + Voice
 
-## Getting Started
+Next.js (App Router) dashboard that scans public URLs with **axe-core** inside **headless Chromium**, explains findings with **Gemini** ([Google AI Studio](https://aistudio.google.com/) free tier), **Claude** (Anthropic), or the **AssemblyAI LLM Gateway**, and supports a **Web Speech API** voice assistant.
 
-First, run the development server:
+## Setup
 
 ```bash
+npm install
+cp .env.example .env.local
+# Add GEMINI_API_KEY and/or ANTHROPIC_API_KEY and/or ASSEMBLYAI_API_KEY; optional PUPPETEER_EXECUTABLE_PATH for local scans
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000). The dev script is pinned to **port 3000** (`next dev -p 3000`) so the URL does not jump to 3001 when another process briefly holds the port—if you see “port in use,” stop the other listener and run `npm run dev` again.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Environment
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `GEMINI_API_KEY` | Yes (for AI, free tier) | [Google AI Studio](https://aistudio.google.com/apikey) API key. Use `LLM_PROVIDER=gemini` to prefer Gemini when you also have Anthropic. |
+| `GEMINI_MODEL_DEFAULT` | No | Default `gemini-2.5-flash`. On **429 / quota**, the app retries with backoff, tries **fallback models** (`GEMINI_MODEL_FALLBACKS` or built-ins), then **Claude** if `ANTHROPIC_API_KEY` is set. See [Gemini models](https://ai.google.dev/gemini-api/docs/models). |
+| `GEMINI_MODEL_CRITICAL` | No | Default `gemini-2.5-flash`. Override with e.g. `gemini-2.5-pro` if your quota allows. |
+| `GEMINI_MODEL_FALLBACKS` | No | Comma-separated model ids tried after the primary when rate-limited (separate free-tier pools). |
+| `GEMINI_429_ATTEMPTS_PER_MODEL` | No | Retries per model on 429 (default **4**), using server `retry in …s` when present. |
+| `GEMINI_FALLBACK_TO_ANTHROPIC` | No | `false` to disable Claude fallback when `LLM_PROVIDER=gemini` and Gemini stays rate-limited. |
+| `ANTHROPIC_API_KEY` | Alternative for AI | [Anthropic](https://console.anthropic.com/) API key. If set **and** `LLM_PROVIDER` is unset, Anthropic is chosen before Gemini (quality default). |
+| `LLM_PROVIDER` | No | `gemini`, `anthropic`, or `assemblyai`. If unset: **Anthropic** → **Gemini** → **AssemblyAI** (first with a configured key). |
+| `ANTHROPIC_MODEL_SONNET` | No | Default `claude-sonnet-4-5` (chat + non-critical explanations via Anthropic API) |
+| `ANTHROPIC_MODEL_OPUS` | No | Default `claude-opus-4-6` (critical explanations via Anthropic API) |
+| `ASSEMBLYAI_API_KEY` | Alternative for AI | [AssemblyAI](https://www.assemblyai.com/) key for LLM Gateway. On LeMUR/access errors, the app falls back to Anthropic or Gemini when those keys exist. |
+| `ASSEMBLYAI_LLM_URL` | No | Default US: `https://llm-gateway.assemblyai.com/v1/chat/completions`. EU: `https://llm-gateway.eu.assemblyai.com/v1/chat/completions` |
+| `ASSEMBLYAI_MODEL_DEFAULT` | No | Default `claude-sonnet-4-5-20250929` (AssemblyAI gateway) |
+| `ASSEMBLYAI_MODEL_CRITICAL` | No | Default `claude-opus-4-6` (AssemblyAI gateway) |
+| `PUPPETEER_EXECUTABLE_PATH` | Recommended locally | Path to Chrome/Chromium. On macOS: `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome` |
 
-## Learn More
+On **macOS/Windows**, scans use your **installed Chromium-based browser** (macOS: Chrome, Chrome Canary, Chromium, Brave, Arc, Edge under `/Applications/`, in that order; Windows: Chrome, Edge). `@sparticuz/chromium` is a **Linux** binary—using it locally caused `spawn ENOEXEC`. On **Linux/Vercel**, the bundled `@sparticuz/chromium` is used when `PUPPETEER_EXECUTABLE_PATH` is unset. Use a **Pro** plan (or similar) for reliable long-running functions, **60s** timeout, and enough **memory** for Chromium (see `vercel.json`).
 
-To learn more about Next.js, take a look at the following resources:
+## API
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- `POST /api/scan` — `{ "url": "https://..." }` → axe violations normalized as issues.
+- `POST /api/ai-explain` — `{ "issue": { ...ScanIssue } }` → `{ explanation, model }`.
+- `POST /api/chat` — `{ "messages": [{role, content}], "scanSummary"?: {...} }` → `{ reply, model }`.
+- `POST /api/jira-mock` — logs a mock ticket payload (demo only).
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Hydration / voice UI
 
-## Deploy on Vercel
+`VoiceAssistant` is loaded with `next/dynamic({ ssr: false })` so the Web Speech API is never evaluated during SSR (avoids React hydration mismatches on the mic button). Do not render `VoiceAssistant` in a server-only path without that pattern.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Voice troubleshooting
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- **`network` error (Chrome):** Speech recognition uses an online service. Stay on Wi‑Fi/Ethernet, allow the microphone when prompted, and open the app at **`http://localhost:3000`** (or HTTPS). Using **`http://192.168.x.x:3000`** is not a secure context and often breaks voice.
+- **Mic first:** The app requests the microphone with `getUserMedia` before starting recognition, which avoids many failures.
+- **Fallback:** Use **“Or type the same commands”** if voice still fails (VPN, corporate firewall, etc.).
+
+## Voice commands
+
+- “Scan this page”
+- “Explain issue 3”
+- “Show critical issues”
+- “How to fix this issue” (uses the selected issue)
+
+## Security notes
+
+The scan endpoint applies basic **SSRF** checks (scheme, blocked hostnames, private IPv4). Running a public URL scanner still carries abuse risk—add **auth**, **rate limits**, and monitoring before wide deployment.
+
+## Scripts
+
+- `npm run dev` — development server
+- `npm run build` — production build
+- `npm run start` — production server
+- `npm run lint` — ESLint

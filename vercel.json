@@ -1,0 +1,14 @@
+{
+  "functions": {
+    "app/api/scan/route.ts": {
+      "maxDuration": 60,
+      "memory": 3008
+    },
+    "app/api/ai-explain/route.ts": {
+      "maxDuration": 120
+    },
+    "app/api/chat/route.ts": {
+      "maxDuration": 120
+    }
+  }
+}

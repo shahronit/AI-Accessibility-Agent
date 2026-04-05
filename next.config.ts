@@ -1,7 +1,11 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  // Headless Chromium + Puppeteer must not be bundled into the serverless function graph.
+  serverExternalPackages: ["puppeteer-core", "@sparticuz/chromium", "axe-core"],
+  turbopack: {
+    root: __dirname,
+  },
 };
 
 export default nextConfig;
