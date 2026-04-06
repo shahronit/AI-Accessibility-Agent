@@ -87,6 +87,43 @@ Anyone can use the app in a browser after you host it—no need for them to inst
 
 **Security:** A public scanner can be abused (SSRF, cost). Before sharing widely, consider adding **authentication**, **rate limiting**, and monitoring. See the Security notes below.
 
+## Other hosts (free subdomain, no domain purchase)
+
+Each provider below gives you a **free HTTPS hostname** (you only pay if you attach a custom domain from a registrar). Pick based on budget and whether **axe scans** must run on the free tier.
+
+| Platform | Typical free URL | Good fit for this repo? |
+|----------|------------------|-------------------------|
+| **[Vercel](https://vercel.com)** | `https://*.vercel.app` | **Best default** — repo already has `vercel.json`. Scans use serverless Chromium. Heavy RAM/time may need **Pro**. |
+| **[Render](https://render.com)** | `https://*.onrender.com` | **Strong** — use the **`Dockerfile`** in this repo (system Chromium + `PUPPETEER_EXECUTABLE_PATH`). Free web services **spin down** when idle (first request after sleep is slow). Optional [`render.yaml`](./render.yaml) blueprint. |
+| **[Fly.io](https://fly.io)** | `https://*.fly.dev` | **Strong** — deploy the same Docker image; check current **free tier / limits** (often requires a card on file). Run `fly launch` from the repo root after installing the [CLI](https://fly.io/docs/hands-on/install-flyctl/). |
+| **[Railway](https://railway.app)** | `https://*.up.railway.app` | **Possible** — deploy from GitHub with **Dockerfile**; pricing is mostly **usage-based** (trial credits). |
+| **[Netlify](https://netlify.com)** | `https://*.netlify.app` | **UI + simple APIs** are fine; **full Puppeteer scans** are not drop-in — expect extra work vs Vercel/Docker. |
+| **Cloudflare Pages** | `https://*.pages.dev` | **Not a simple port** — Workers runtime differs from Node + Chromium as used here. |
+
+### Deploy on Render (Docker + free `onrender.com` URL)
+
+1. Push this repo to GitHub.
+2. [Render](https://dashboard.render.com) → **New +** → **Web Service** → connect the repo.
+3. Set **Runtime** to **Docker** (or use **Blueprint** and point at [`render.yaml`](./render.yaml)).
+4. **Environment** → add the same variables as `.env.example` (e.g. `GEMINI_API_KEY`). **Set `PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium`** only if you change the image; the `Dockerfile` already sets it.
+5. Deploy; open the **`https://<service-name>.onrender.com`** URL Render assigns.
+
+### Deploy on Fly.io (Docker + free `fly.dev` URL)
+
+1. Install `flyctl` and run `fly auth login`.
+2. From the project root: `fly launch` — choose **Dockerfile** when prompted.
+3. Set secrets: `fly secrets set GEMINI_API_KEY=...` (and any others from `.env.example`).
+4. `fly deploy` — use the **`*.fly.dev`** URL shown in the dashboard.
+
+### Local Docker check (optional)
+
+```bash
+docker build -t ai-accessibility-agent .
+docker run --rm -p 3000:3000 -e GEMINI_API_KEY=your_key_here ai-accessibility-agent
+```
+
+Then open `http://localhost:3000`.
+
 ## Scripts
 
 - `npm run dev` — development server

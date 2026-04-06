@@ -1,0 +1,14 @@
+# Render Blueprint (optional): https://render.com/docs/blueprint-spec
+# Create a Web Service from this repo, set runtime to Docker, or use "Apply" from Blueprint.
+# Add GEMINI_API_KEY (and other secrets) in the Render dashboard — do not commit them here.
+
+services:
+  - type: web
+    name: ai-accessibility-agent
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    region: oregon
+    envVars:
+      - key: NODE_ENV
+        value: production
