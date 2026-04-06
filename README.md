@@ -1,6 +1,6 @@
-# Accessibility AI Scanner + Voice
+# Accessibility AI Agent
 
-Next.js (App Router) dashboard that scans public URLs with **axe-core** inside **headless Chromium**, explains findings with **Gemini** ([Google AI Studio](https://aistudio.google.com/) free tier), **Claude** (Anthropic), or the **AssemblyAI LLM Gateway**, and supports a **Web Speech API** voice assistant.
+Next.js (App Router) workspace that scans public URLs with **axe-core** in **headless Chromium**, explains findings with **Gemini** ([Google AI Studio](https://aistudio.google.com/) free tier), **Claude** (Anthropic), or the **AssemblyAI LLM Gateway**, and includes a **Web Speech API** voice agent plus AI chat.
 
 ## Setup
 

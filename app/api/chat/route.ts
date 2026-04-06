@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { chatWithContext, type ChatMessage } from "@/lib/aiClient";
+import type { ChatIssueFocus } from "@/lib/prompts";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -18,11 +19,25 @@ function isChatMessage(value: unknown): value is ChatMessage {
   return (o.role === "user" || o.role === "assistant") && typeof o.content === "string";
 }
 
+function isIssueFocus(value: unknown): value is ChatIssueFocus {
+  if (!value || typeof value !== "object") return false;
+  const o = value as Record<string, unknown>;
+  return (
+    typeof o.index === "number" &&
+    typeof o.id === "string" &&
+    typeof o.impact === "string" &&
+    typeof o.description === "string" &&
+    typeof o.helpUrl === "string"
+  );
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = (await req.json()) as {
       messages?: unknown;
       scanSummary?: unknown;
+      issueFocus?: unknown;
+      explanationContext?: unknown;
     };
 
     if (!Array.isArray(body.messages) || !body.messages.every(isChatMessage)) {
@@ -37,7 +52,16 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const { text, model } = await chatWithContext(body.messages, scanSummary);
+    const issueFocus = isIssueFocus(body.issueFocus) ? body.issueFocus : null;
+    const explanationContext =
+      typeof body.explanationContext === "string" ? body.explanationContext.slice(0, 24_000) : null;
+
+    const { text, model } = await chatWithContext(
+      body.messages,
+      scanSummary,
+      issueFocus,
+      explanationContext,
+    );
     return NextResponse.json({ reply: text, model });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Chat failed";

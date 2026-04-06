@@ -1,5 +1,6 @@
 "use client";
 
+import { LayoutList, ListFilter } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { IssueCard } from "@/components/IssueCard";
@@ -29,25 +30,35 @@ export function ResultsList({
   const filtered = filter === "all" ? issues : issues.filter((i) => i.impact === filter);
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-3">
-      <Tabs
-        value={filter}
-        onValueChange={(v) => onFilterChange(v as ImpactFilter)}
-        className="w-full"
-      >
-        <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1" aria-label="Filter by impact">
-          <TabsTrigger value="all">All</TabsTrigger>
-          <TabsTrigger value="critical">Critical</TabsTrigger>
-          <TabsTrigger value="serious">Serious</TabsTrigger>
-          <TabsTrigger value="moderate">Moderate</TabsTrigger>
-          <TabsTrigger value="minor">Minor</TabsTrigger>
-        </TabsList>
-      </Tabs>
+    <div className="flex h-full min-h-0 flex-col gap-3 overflow-hidden rounded-xl border border-white/10 bg-card/50 shadow-inner backdrop-blur-sm">
+      <div className="flex flex-wrap items-center gap-2 border-b border-white/5 px-3 pt-3 pb-1">
+        <ListFilter className="text-primary size-4 shrink-0" aria-hidden />
+        <span className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">Filter</span>
+        <Tabs
+          value={filter}
+          onValueChange={(v) => onFilterChange(v as ImpactFilter)}
+          className="w-full min-w-0 flex-1"
+        >
+          <TabsList
+            className="flex h-auto w-full flex-wrap justify-start gap-1 bg-muted/40"
+            aria-label="Filter by impact"
+          >
+            <TabsTrigger value="all">All</TabsTrigger>
+            <TabsTrigger value="critical">Critical</TabsTrigger>
+            <TabsTrigger value="serious">Serious</TabsTrigger>
+            <TabsTrigger value="moderate">Moderate</TabsTrigger>
+            <TabsTrigger value="minor">Minor</TabsTrigger>
+          </TabsList>
+        </Tabs>
+      </div>
 
-      <ScrollArea className="min-h-[320px] flex-1 rounded-lg border">
-        <div className="space-y-3 p-3">
+      <ScrollArea className="min-h-[320px] flex-1 px-2 pb-2">
+        <div className="space-y-3 pr-2">
           {filtered.length === 0 ? (
-            <p className="text-muted-foreground p-4 text-sm">No issues match this filter.</p>
+            <div className="text-muted-foreground flex flex-col items-center gap-2 py-12 text-center text-sm">
+              <LayoutList className="size-10 opacity-40" aria-hidden />
+              <p>No issues match this filter.</p>
+            </div>
           ) : (
             filtered.map((issue) => (
               <IssueCard

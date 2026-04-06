@@ -71,8 +71,16 @@ export type VoiceCommand =
   | { type: "scan" }
   | { type: "explain_issue"; index: number }
   | { type: "filter_critical" }
+  | { type: "filter_all" }
   | { type: "how_to_fix" }
+  /** Send a scan-wide explanation request through AI chat. */
+  | { type: "chat_explain_scan" }
+  /** Speak a short summary of scan results (counts / top rules). */
+  | { type: "speak_scan_summary" }
   | { type: "unknown"; raw: string };
+
+/** Milliseconds of silence after speech before treating the utterance as complete. */
+export const VOICE_SILENCE_END_MS = 5000;
 
 type SpeechRecognitionConstructor = new () => SpeechRecognition;
 
@@ -103,6 +111,37 @@ export function parseVoiceCommand(transcript: string): VoiceCommand {
 
   if (t.includes("show critical") || t.includes("critical issues") || t.includes("only critical")) {
     return { type: "filter_critical" };
+  }
+
+  if (
+    t.includes("show all") ||
+    t.includes("all issues") ||
+    t.includes("clear filter") ||
+    t.includes("remove filter")
+  ) {
+    return { type: "filter_all" };
+  }
+
+  if (
+    t.includes("explain the issues") ||
+    t.includes("explain all issues") ||
+    t.includes("explain these issues") ||
+    t.includes("overview of issues") ||
+    t.includes("summarize the issues")
+  ) {
+    return { type: "chat_explain_scan" };
+  }
+
+  if (
+    t.includes("read the results") ||
+    t.includes("read results") ||
+    t.includes("tell me the results") ||
+    t.includes("what issues") ||
+    t.includes("share the results") ||
+    t.includes("summarize results") ||
+    t.includes("summary of results")
+  ) {
+    return { type: "speak_scan_summary" };
   }
 
   const explainMatch = t.match(/explain\s+issue\s+(\d+)/);
@@ -152,6 +191,28 @@ export function createRecognition(handlers: RecognitionHandlers): SpeechRecognit
   };
 
   return rec;
+}
+
+export function buildScanSummarySpeech(params: {
+  scannedUrl?: string;
+  total: number;
+  byImpact: Record<string, number>;
+  topRules: { id: string; count: number }[];
+}): string {
+  const b = params.byImpact;
+  const parts = [
+    `Scan of ${params.scannedUrl ?? "the page"} found ${params.total} accessibility issues.`,
+    `Critical ${b.critical ?? 0}, serious ${b.serious ?? 0}, moderate ${b.moderate ?? 0}, minor ${b.minor ?? 0}.`,
+  ];
+  if (params.topRules.length > 0) {
+    parts.push(
+      `Frequent rules include ${params.topRules
+        .slice(0, 4)
+        .map((r) => `${r.id} (${r.count})`)
+        .join(", ")}.`,
+    );
+  }
+  return parts.join(" ");
 }
 
 export function speakText(text: string, onEnd?: () => void) {

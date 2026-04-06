@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { Providers } from "./providers";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -13,8 +14,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Accessibility AI Scanner",
-  description: "AI-powered WCAG accessibility scanning with voice assistant and Claude explanations.",
+  title: "Accessibility AI Agent",
+  description:
+    "Your AI agent for WCAG-aligned accessibility scans, voice control, structured explanations, and chat.",
 };
 
 export default function RootLayout({
@@ -27,7 +29,9 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} dark h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="flex min-h-full flex-col">
+        <Providers>{children}</Providers>
+      </body>
     </html>
   );
 }

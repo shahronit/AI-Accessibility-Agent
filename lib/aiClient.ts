@@ -1,7 +1,11 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { GoogleGenerativeAI, GoogleGenerativeAIFetchError, type Content } from "@google/generative-ai";
 import type { ScanIssue } from "@/lib/axeScanner";
-import { buildChatSystemPrompt, buildExplainPrompt } from "@/lib/prompts";
+import { buildChatSystemPrompt, buildExplainPrompt, type ChatIssueFocus } from "@/lib/prompts";
+import {
+  buildTestingAnalysisMessages,
+  type TestingAnalysisMode,
+} from "@/lib/testingAnalysisPrompts";
 
 /** AssemblyAI LLM Gateway model ids */
 const aaDefaultModel = process.env.ASSEMBLYAI_MODEL_DEFAULT ?? "claude-sonnet-4-5-20250929";
@@ -546,8 +550,14 @@ export type ChatMessage = { role: "user" | "assistant"; content: string };
 export async function chatWithContext(
   messages: ChatMessage[],
   scanSummary?: Parameters<typeof buildChatSystemPrompt>[0],
+  issueFocus?: ChatIssueFocus | null,
+  explanationText?: string | null,
 ): Promise<{ text: string; model: string }> {
-  const system = buildChatSystemPrompt(scanSummary);
+  const focus =
+    issueFocus != null
+      ? { issue: issueFocus, explanationText: explanationText ?? null }
+      : null;
+  const system = buildChatSystemPrompt(scanSummary, focus);
   const gatewayMessages: GatewayMessage[] = [
     { role: "system", content: system },
     ...messages.map((m) => ({ role: m.role, content: m.content })),
@@ -559,5 +569,27 @@ export async function chatWithContext(
     geminiModel: gemDefaultModel,
     max_tokens: 2048,
     messages: gatewayMessages,
+  });
+}
+
+export type { TestingAnalysisMode } from "@/lib/testingAnalysisPrompts";
+
+/** Full-scan testing report: POUR, methods, checkpoints, or comprehensive (all findings, not one issue). */
+export async function analyzeScanForTestingAgent(
+  scannedUrl: string,
+  issues: ScanIssue[],
+  mode: TestingAnalysisMode,
+): Promise<{ text: string; model: string }> {
+  const { system, user } = buildTestingAnalysisMessages(scannedUrl, issues, mode);
+  const max_tokens = mode === "comprehensive" ? 8192 : 6144;
+  return runChatCompletion({
+    assemblyModel: aaDefaultModel,
+    anthropicModel: antSonnetModel,
+    geminiModel: gemDefaultModel,
+    max_tokens,
+    messages: [
+      { role: "system", content: system },
+      { role: "user", content: user },
+    ],
   });
 }

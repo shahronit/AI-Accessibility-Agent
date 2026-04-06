@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
     const page = await browser.newPage();
 
     await page.setUserAgent(
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 A11yScanner/1.0",
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 A11yAgent/1.0",
     );
 
     await page.goto(targetUrl, { waitUntil: "networkidle2", timeout: 55_000 });

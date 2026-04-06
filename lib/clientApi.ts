@@ -1,20 +1,6 @@
 "use client";
 
-import type { ScanIssue } from "@/lib/axeScanner";
-
-/** Keep explain payloads small and JSON-safe for reliable POSTs. */
-export function sanitizeIssueForApi(issue: ScanIssue): ScanIssue {
-  return {
-    index: issue.index,
-    id: issue.id,
-    description: issue.description,
-    impact: issue.impact,
-    html: issue.html.slice(0, 16_000),
-    helpUrl: issue.helpUrl,
-    failureSummary: issue.failureSummary?.slice(0, 4000),
-    targets: issue.targets,
-  };
-}
+export { sanitizeIssueForApi } from "@/lib/issueSanitize";
 
 type JsonRecord = Record<string, unknown>;
 
