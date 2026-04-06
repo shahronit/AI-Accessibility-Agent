@@ -2,6 +2,8 @@
 
 Next.js (App Router) workspace that scans public URLs with **axe-core** in **headless Chromium**, explains findings with **Gemini** ([Google AI Studio](https://aistudio.google.com/) free tier), **Claude** (Anthropic), or the **AssemblyAI LLM Gateway**, and includes a **Web Speech API** voice agent plus AI chat.
 
+**Architecture:** For a detailed system overview, data flows, and Mermaid diagrams, see **[ARCHITECTURE.md](./ARCHITECTURE.md)**.
+
 ## Setup
 
 ```bash
