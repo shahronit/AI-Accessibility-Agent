@@ -574,7 +574,7 @@ export async function chatWithContext(
 
 export type { TestingAnalysisMode } from "@/lib/testingAnalysisPrompts";
 
-/** Full-scan testing report: POUR, methods, checkpoints, or comprehensive (all findings, not one issue). */
+/** Full-scan testing report: core principles, testing plan, essential checks, or comprehensive. */
 export async function analyzeScanForTestingAgent(
   scannedUrl: string,
   issues: ScanIssue[],

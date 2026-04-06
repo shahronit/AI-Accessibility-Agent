@@ -4,7 +4,7 @@ import { TestingNav } from "@/components/TestingNav";
 export const metadata: Metadata = {
   title: "Accessibility testing · Accessibility AI Agent",
   description:
-    "POUR principles, testing methods, and key checkpoints—plus AI-generated reports from your full axe scan.",
+    "Core principles, a practical testing plan, and essential checks—plus AI reports from your axe scan.",
 };
 
 export default function TestingLayout({ children }: { children: React.ReactNode }) {

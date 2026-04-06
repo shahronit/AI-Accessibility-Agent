@@ -6,16 +6,16 @@ export default function TestingPourPage() {
     <article className="space-y-8 pb-12">
       <TestingHero
         icon="layers"
-        title="POUR analysis"
+        title="Core principles"
         accentClass="from-indigo-600/28 via-card/95 to-violet-950/40"
-        subtitle="Scan a URL for a pillar-by-pillar WCAG POUR report."
+        subtitle="Scan a URL to see how each issue fits the four accessibility ideas: perceivable, operable, understandable, and robust."
       />
 
       <TestingAgentRunner
         mode="pour"
         icon="layers"
         fieldId="testing-pour-url"
-        title="WCAG POUR report"
+        title="Core principles report"
         cardAccent="from-indigo-500/12 via-card to-violet-950/45"
       />
     </article>

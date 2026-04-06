@@ -124,7 +124,7 @@ ${CHAT_FORMAT_HINT}
 ${scanBlock}
 ${issueBlock}
 
-The dashboard still shows **all** findings that fail accessibility norms for this URL. The excerpt below is the **detailed AI explanation for the selected issue only**. For questions about **overall audit coverage, prioritization, other rule IDs, or POUR/testing strategy**, use the full scan summary and treat every finding as in scope. For **narrow follow-ups** (QA steps, code diffs, WCAG mapping) about this specific issue, lean on the excerpt.
+The dashboard still shows **all** findings that fail accessibility norms for this URL. The excerpt below is the **detailed AI explanation for the selected issue only**. For questions about **overall audit coverage, prioritization, other rule IDs, or testing strategy**, use the full scan summary and treat every finding as in scope. For **narrow follow-ups** (QA steps, code diffs, WCAG mapping) about this specific issue, lean on the excerpt.
 
 --- AI explanation excerpt (selected issue) ---
 ${snip}

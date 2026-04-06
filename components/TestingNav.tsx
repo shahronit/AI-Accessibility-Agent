@@ -8,9 +8,9 @@ import { cn } from "@/lib/utils";
 const LINKS: { href: string; label: string; icon: typeof Home }[] = [
   { href: "/", label: "Scanner", icon: Home },
   { href: "/testing", label: "Overview", icon: LayoutGrid },
-  { href: "/testing/pour", label: "POUR", icon: Layers },
-  { href: "/testing/methods", label: "Methods", icon: Workflow },
-  { href: "/testing/checkpoints", label: "Checkpoints", icon: ClipboardCheck },
+  { href: "/testing/pour", label: "Core principles", icon: Layers },
+  { href: "/testing/methods", label: "Testing plan", icon: Workflow },
+  { href: "/testing/checkpoints", label: "Essential checks", icon: ClipboardCheck },
 ];
 
 export function TestingNav() {

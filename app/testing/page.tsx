@@ -26,27 +26,27 @@ export default function TestingOverviewPage() {
             <span className="bg-primary/15 text-primary inline-flex size-10 items-center justify-center rounded-xl">
               <Layers className="size-5" aria-hidden />
             </span>
-            <span className="text-foreground font-semibold">POUR</span>
+            <span className="text-foreground font-semibold">Core principles</span>
             <span className="text-muted-foreground text-sm leading-snug">
-              Perceivable, Operable, Understandable, Robust mapping.
+              How issues relate to perception, operation, clarity, and robust markup.
             </span>
           </Link>
           <Link href="/testing/methods" className={cn(cardClass)}>
             <span className="bg-cyan-500/15 text-cyan-400 inline-flex size-10 items-center justify-center rounded-xl">
               <Workflow className="size-5" aria-hidden />
             </span>
-            <span className="text-foreground font-semibold">Methods</span>
+            <span className="text-foreground font-semibold">Testing plan</span>
             <span className="text-muted-foreground text-sm leading-snug">
-              Automated, manual, and user-testing plan.
+              What the scan found plus what to verify by hand and with real users.
             </span>
           </Link>
           <Link href="/testing/checkpoints" className={cn(cardClass)}>
             <span className="bg-emerald-500/15 text-emerald-400 inline-flex size-10 items-center justify-center rounded-xl">
               <ClipboardCheck className="size-5" aria-hidden />
             </span>
-            <span className="text-foreground font-semibold">Checkpoints</span>
+            <span className="text-foreground font-semibold">Essential checks</span>
             <span className="text-muted-foreground text-sm leading-snug">
-              Keyboard, contrast, alt text, forms.
+              Keyboard, contrast, images, and form labels in plain language.
             </span>
           </Link>
         </div>

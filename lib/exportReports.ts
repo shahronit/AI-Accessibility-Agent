@@ -282,8 +282,16 @@ function stripInlineMarkdown(s: string): string {
     .replace(/`([^`]+)`/g, "$1");
 }
 
+/** User-facing labels for testing hub `mode` codes (PDF cover, not API). */
+const TESTING_HUB_MODE_LABEL: Record<string, string> = {
+  pour: "Core principles",
+  methods: "Testing plan",
+  checkpoints: "Essential checks",
+  comprehensive: "Full report",
+};
+
 /**
- * PDF export for testing hub AI reports (POUR, methods, checkpoints, comprehensive).
+ * PDF export for testing hub AI reports (core principles, testing plan, essential checks, or full).
  */
 export function exportTestingHubReportPdf(params: {
   reportTitle: string;
@@ -332,7 +340,7 @@ export function exportTestingHubReportPdf(params: {
   yRef.y += 4;
   doc.setFont("helvetica", "normal");
   addWrapped(`URL: ${params.scannedUrl}`);
-  addWrapped(`Mode: ${params.mode}`);
+  addWrapped(`Report type: ${TESTING_HUB_MODE_LABEL[params.mode] ?? params.mode}`);
   addWrapped(`Automated findings: ${params.issueCount}`);
   if (params.model?.trim()) {
     addWrapped(`Model: ${params.model}`);
