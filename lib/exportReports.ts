@@ -334,7 +334,7 @@ export function exportTestingHubReportPdf(params: {
   doc.setFontSize(18);
   doc.setFont("helvetica", "bold");
   doc.setTextColor(0, 0, 0);
-  doc.text("Testing hub report", margin, yRef.y);
+  doc.text("Testing report", margin, yRef.y);
   yRef.y += 26;
   addWrapped(params.reportTitle, { bold: true, size: 12 });
   yRef.y += 4;

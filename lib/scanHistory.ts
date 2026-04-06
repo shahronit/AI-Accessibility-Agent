@@ -11,6 +11,8 @@ export type HistoryEntry = {
   savedAt: string;
   totalIssues: number;
   byImpact: Record<string, number>;
+  /** Axe incomplete instances (potential / needs manual review), when the scan requested overview stats */
+  incompleteInstances?: number;
   /** Trimmed snapshot for quick restore */
   issuesSample?: Pick<ScanIssue, "id" | "impact" | "description">[];
 };
@@ -44,4 +46,25 @@ export function saveScanToHistory(entry: Omit<HistoryEntry, "id" | "savedAt"> & 
     MAX_ENTRIES,
   );
   writeAll(next);
+}
+
+export function clearScanHistory() {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem(STORAGE_KEY);
+}
+
+/**
+ * Compare two scanned URLs for dashboard matching (same page, ignoring trailing slash).
+ */
+export function dashboardScanUrlKey(href: string): string {
+  const t = href.trim();
+  if (!t) return "";
+  try {
+    const u = new URL(t);
+    u.hash = "";
+    const path = u.pathname.replace(/\/$/, "") || "/";
+    return `${u.origin.toLowerCase()}${path.toLowerCase()}`;
+  } catch {
+    return t.replace(/\/$/, "").toLowerCase();
+  }
 }

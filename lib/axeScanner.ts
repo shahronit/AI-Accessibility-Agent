@@ -2,6 +2,21 @@ import type { Result, NodeResult } from "axe-core";
 
 export type ImpactLevel = "critical" | "serious" | "moderate" | "minor";
 
+/** Returned when POST /api/scan includes includeAxeOverview: true */
+export type AxeOverviewStats = {
+  passRules: number;
+  incompleteRules: number;
+  incompleteInstances: number;
+};
+
+/** Prefer incomplete node count; if zero but rules exist, use rule count (axe overview). */
+export function axeIncompleteReviewCount(overview: AxeOverviewStats | null | undefined): number {
+  if (overview == null) return 0;
+  return overview.incompleteInstances > 0
+    ? overview.incompleteInstances
+    : (overview.incompleteRules ?? 0);
+}
+
 export interface ScanIssue {
   /** 1-based index in the flattened issue list (for voice: "explain issue 1") */
   index: number;
@@ -14,6 +29,8 @@ export interface ScanIssue {
   failureSummary?: string;
   /** Serialized axe selector paths for context */
   targets?: unknown[];
+  /** Set when merging batch scan results */
+  sourceUrl?: string;
 }
 
 const IMPACT_ORDER: ImpactLevel[] = ["critical", "serious", "moderate", "minor"];
@@ -33,7 +50,11 @@ function truncateHtml(html: string, max = 2000): string {
 /**
  * Flatten axe violations to one record per failing node for UI and AI context.
  */
-export function normalizeAxeViolations(violations: Result[]): ScanIssue[] {
+export function normalizeAxeViolations(
+  violations: Result[],
+  options?: { sourceUrl?: string },
+): ScanIssue[] {
+  const sourceUrl = options?.sourceUrl;
   const issues: ScanIssue[] = [];
   let index = 1;
 
@@ -48,6 +69,7 @@ export function normalizeAxeViolations(violations: Result[]): ScanIssue[] {
         html: "",
         helpUrl: v.helpUrl,
         failureSummary: v.description,
+        ...(sourceUrl ? { sourceUrl } : {}),
       });
       continue;
     }
@@ -62,6 +84,7 @@ export function normalizeAxeViolations(violations: Result[]): ScanIssue[] {
         helpUrl: v.helpUrl,
         failureSummary: node.failureSummary || v.description,
         targets: node.target as unknown[],
+        ...(sourceUrl ? { sourceUrl } : {}),
       });
     }
   }

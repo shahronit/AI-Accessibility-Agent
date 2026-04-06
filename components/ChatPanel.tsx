@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { FileDown, MessageSquare, Mic, MicOff, Send, Sparkles } from "lucide-react";
+import { FileDown, Loader2, MessageSquare, Mic, MicOff, Send, Sparkles } from "lucide-react";
 import { FormattedAiText } from "@/components/FormattedAiText";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -32,6 +32,8 @@ type Props = {
   onSend: (payload: ChatSendPayload) => Promise<string>;
   /** When `id` changes, the panel sends `text` as a user message (e.g. voice → chat). */
   voiceSendTrigger: { id: number; text: string } | null;
+  /** Replaces the default subtitle under “AI chat”. */
+  contextHint?: string;
 };
 
 export function ChatPanel({
@@ -40,6 +42,7 @@ export function ChatPanel({
   explanationText,
   onSend,
   voiceSendTrigger,
+  contextHint,
 }: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -131,7 +134,10 @@ export function ChatPanel({
                 AI chat
                 <Sparkles className="text-amber-400 size-4" aria-hidden />
               </CardTitle>
-              <p className="text-muted-foreground text-sm">Context includes the full scan; narrow to a row after Explain with AI.</p>
+              <p className="text-muted-foreground text-sm">
+                {contextHint ??
+                  "Context includes the full scan; use Explain with AI on the scanner to open a focused tab with explanation and chat."}
+              </p>
             </div>
           </div>
           <Button
@@ -152,6 +158,7 @@ export function ChatPanel({
           className="max-h-[min(42vh,380px)] min-h-[200px] overflow-y-auto overflow-x-hidden rounded-md border p-3"
           role="region"
           aria-label="Chat messages"
+          aria-busy={loading}
         >
           <div className="space-y-3 pr-1" role="log" aria-live="polite" aria-relevant="additions">
             {messages.length === 0 ? (
@@ -170,7 +177,12 @@ export function ChatPanel({
                 </div>
               ))
             )}
-            {loading ? <p className="text-muted-foreground text-sm">Thinking…</p> : null}
+            {loading ? (
+              <p className="text-muted-foreground flex items-center gap-2 text-sm" role="status">
+                <Loader2 className="size-4 shrink-0 animate-spin text-primary" aria-hidden />
+                Thinking…
+              </p>
+            ) : null}
           </div>
         </div>
         {error ? (
@@ -190,10 +202,11 @@ export function ChatPanel({
             placeholder={selectedIssue ? "Ask about this issue…" : "Ask about the scan…"}
             rows={2}
             className="min-h-[72px] flex-1 resize-none"
+            disabled={loading}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
-                void submitMessage(input, true);
+                if (!loading) void submitMessage(input, true);
               }
             }}
             aria-label="Chat message"
@@ -204,7 +217,7 @@ export function ChatPanel({
               variant={speech.listening ? "destructive" : "outline"}
               size="icon"
               className="size-10"
-              disabled={speech.starting}
+              disabled={speech.starting || loading}
               onClick={() => {
                 setSpeechErr(null);
                 if (speech.listening) speech.stop();
@@ -214,7 +227,7 @@ export function ChatPanel({
               aria-pressed={speech.listening}
             >
               {speech.starting ? (
-                <Mic className="size-4 animate-pulse" aria-hidden />
+                <Loader2 className="size-4 animate-spin" aria-hidden />
               ) : speech.listening ? (
                 <MicOff className="size-4" aria-hidden />
               ) : (
@@ -229,7 +242,11 @@ export function ChatPanel({
               disabled={loading || !input.trim()}
               aria-label="Send message"
             >
-              <Send className="size-4" />
+              {loading ? (
+                <Loader2 className="size-4 animate-spin" aria-hidden />
+              ) : (
+                <Send className="size-4" aria-hidden />
+              )}
             </Button>
           </div>
         </div>

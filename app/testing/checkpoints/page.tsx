@@ -1,4 +1,4 @@
-import { TestingAgentRunner } from "@/components/TestingAgentRunner";
+import { EssentialChecksRunner } from "@/components/EssentialChecksRunner";
 import { TestingHero } from "@/components/TestingHero";
 
 export default function TestingCheckpointsPage() {
@@ -8,16 +8,10 @@ export default function TestingCheckpointsPage() {
         icon="clipboardCheck"
         title="Essential checks"
         accentClass="from-emerald-600/22 via-card/95 to-slate-950/45"
-        subtitle="Scan a URL to group findings by keyboard use, text contrast, image text, and form labels."
+        subtitle="Run a scan to see an at-a-glance report: severity breakdown, passing rules, items that need manual review, and copy-ready Jira titles for each finding."
       />
 
-      <TestingAgentRunner
-        mode="checkpoints"
-        icon="clipboardCheck"
-        fieldId="testing-checkpoints-url"
-        title="Essential checks report"
-        cardAccent="from-emerald-500/10 via-card to-slate-950/40"
-      />
+      <EssentialChecksRunner fieldId="testing-checkpoints-url" />
     </article>
   );
 }

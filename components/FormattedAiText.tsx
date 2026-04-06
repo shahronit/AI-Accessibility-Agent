@@ -6,6 +6,16 @@ import { isTableRow, parseMarkdownTableRows } from "@/lib/reportMdShared";
 
 function formatLineSegment(key: string, line: string) {
   const t = line.trim();
+  if (t === "Executive Summary" || /^Section \d+ — .+/.test(t)) {
+    return (
+      <p
+        key={key}
+        className="text-foreground mt-4 border-b border-white/10 pb-1.5 text-sm font-semibold tracking-tight first:mt-0"
+      >
+        {t}
+      </p>
+    );
+  }
   if (t.startsWith("✅") || /^\[ADD\]/i.test(t)) {
     return (
       <span key={key} className="block border-l-4 border-green-600 bg-green-950/40 py-0.5 pl-2 text-green-100">

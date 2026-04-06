@@ -24,8 +24,6 @@ import { exportTestingHubReportPdf } from "@/lib/exportReports";
 import { validateScanUrl } from "@/lib/url";
 import { cn } from "@/lib/utils";
 
-const DEFAULT_TEST_URL = "https://dequeuniversity.com/demo/mars/";
-
 const RUNNER_ICONS = {
   sparkles: Sparkles,
   layers: Layers,
@@ -53,7 +51,7 @@ export function TestingAgentRunner({
   description,
   icon,
   fieldId,
-  defaultUrl = DEFAULT_TEST_URL,
+  defaultUrl = "",
   cardAccent = "from-primary/10 via-card/95 to-card",
 }: Props) {
   const Icon = RUNNER_ICONS[icon];
@@ -224,6 +222,23 @@ export function TestingAgentRunner({
             <AlertTitle>Scan error</AlertTitle>
             <AlertDescription>{scanError}</AlertDescription>
           </Alert>
+        ) : null}
+
+        {phase === "analyzing" ? (
+          <div
+            className="border-border/50 flex items-start gap-4 rounded-2xl border border-primary/20 bg-primary/5 p-5"
+            role="status"
+            aria-live="polite"
+            aria-busy="true"
+          >
+            <Loader2 className="text-primary mt-0.5 size-8 shrink-0 animate-spin" aria-hidden />
+            <div className="min-w-0 space-y-1">
+              <p className="text-foreground font-medium">Generating report…</p>
+              <p className="text-muted-foreground text-sm leading-relaxed">
+                The model is reviewing scan results. Comprehensive mode may take several minutes.
+              </p>
+            </div>
+          </div>
         ) : null}
 
         {analysisError ? (

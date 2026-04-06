@@ -1,29 +1,35 @@
 import type { ScanIssue } from "@/lib/axeScanner";
 
-const BASE_TEMPLATE = `You are an accessibility expert. Follow the structure below exactly (headings and section order).
+const BASE_TEMPLATE = `You are an accessibility expert. Produce a concise, precise report suitable for engineering and QA stakeholders (corporate tone: neutral, direct, no hype).
+
+Formatting rules (strict):
+- Do not use Markdown heading syntax: no lines starting with # or ##.
+- Do not use asterisks for emphasis, bold, or italics (no * or ** anywhere).
+- Do not use underscore emphasis. Use Title Case section titles exactly as written below, each on its own line, followed by a blank line.
+- Use short paragraphs and tight bullets. No decorative markdown.
 
 Issue data (JSON):
 {{issue_json}}
 
 ---
 
-## Executive summary
-- 3–5 bullets for developers and QA (plain language).
+Executive Summary
+3–5 bullet lines for developers and QA. Each line must start with "- " (hyphen and space). Plain language only.
 
-## 1. What is the issue
-Clear description tied to the failing element/rule.
+Section 1 — What Is the Issue
+One or two focused paragraphs. Tie the failure to the rule id and the affected element or pattern.
 
-## 2. Why it matters
-Impact on users (assistive tech, keyboard, vision, etc.).
+Section 2 — Why It Matters
+One or two paragraphs on user impact (assistive technology, keyboard, vision, cognition) and business risk where relevant.
 
-## 3. Precise remediation (exact change)
-Name the **most specific location you can infer** (component, template file type, route, or CSS layer). If unknown, say **Target:** with CSS selector or DOM area from the issue.
+Section 3 — Precise Remediation
+State the most specific fix location you can infer (component, template, route, or stylesheet). If you cannot infer a file, begin a line with exactly: Target: followed by the CSS selector or DOM area from the issue data.
 
-For every code change, use these exact prefixes so UI can color them:
-- Lines to **insert** must start with: ✅ ADD (insert this):
-- Lines to **delete or replace** must start with: ❌ REMOVE (delete or replace this):
+For code changes, the UI highlights these lines only if you use these exact prefixes (keep the check/cross symbols):
+- Insertions must begin with: ✅ ADD (insert this):
+- Removals or replacements must begin with: ❌ REMOVE (delete or replace this):
 
-Place the actual code/HTML in fenced blocks immediately after each prefix, for example:
+Immediately after each prefix, put the snippet in a fenced code block. Example shape (your content will differ):
 
 ✅ ADD (insert this):
 \`\`\`html
@@ -35,24 +41,25 @@ Place the actual code/HTML in fenced blocks immediately after each prefix, for e
 <div onclick="openMenu()">Menu</div>
 \`\`\`
 
-Use the **issue's HTML snippet** inside REMOVE when it matches the failure. Do not use vague "example only" unless the issue has no HTML—then give the smallest realistic fragment.
+Use the issue HTML snippet inside REMOVE when it matches the failure. If there is no HTML, give the smallest realistic fragment.
 
-## 4. QA Mode (tables only — no prose lists for these)
+Section 4 — QA Verification
+This section must contain only two markdown pipe tables (no bullet lists here).
 
-First table (metadata):
+First table:
 
 | Field | Details |
 | Test case title | … |
 | Preconditions | … |
 
-Second table (steps — every navigation step must start with **Navigate** in the Action cell):
+Second table. Any step that opens a page or view must include the word Navigate in the Action cell.
 
 | Step # | Action | Expected result |
 | 1 | Navigate to … | … |
 | 2 | … | … |
 
-## 5. Suggestions to improve further
-- 3–7 bullets: optional hardening, tests, monitoring, design system, or related WCAG success criteria beyond the minimum fix.
+Section 5 — Suggestions to Improve Further
+3–7 bullet lines; each line starts with "- ". Optional hardening, regression tests, monitoring, design-system alignment, or related WCAG success criteria beyond the minimum fix.
 `;
 
 export function buildExplainPrompt(issue: ScanIssue): string {

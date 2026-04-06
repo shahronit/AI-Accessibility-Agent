@@ -215,18 +215,30 @@ export function buildScanSummarySpeech(params: {
   return parts.join(" ");
 }
 
-export function speakText(text: string, onEnd?: () => void) {
+export type SpeakTextOptions = {
+  onStart?: () => void;
+  onEnd?: () => void;
+};
+
+/**
+ * Queue one utterance (cancels any in-progress speech). Fires `onEnd` when the utterance
+ * finishes, errors, or is interrupted by {@link stopSpeaking} / another `speakText` call
+ * (browser-dependent; parent UI should also clear state when calling `stopSpeaking`).
+ */
+export function speakText(text: string, options?: SpeakTextOptions) {
   if (!isSpeechSynthesisSupported()) {
-    onEnd?.();
+    options?.onEnd?.();
     return;
   }
   window.speechSynthesis.cancel();
   const utter = new SpeechSynthesisUtterance(text);
   utter.rate = 1;
   utter.pitch = 1;
-  if (onEnd) {
-    utter.onend = onEnd;
-    utter.onerror = onEnd;
+  const end = options?.onEnd;
+  utter.onstart = () => options?.onStart?.();
+  if (end) {
+    utter.onend = end;
+    utter.onerror = end;
   }
   window.speechSynthesis.speak(utter);
 }

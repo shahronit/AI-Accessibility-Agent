@@ -11,5 +11,6 @@ export function sanitizeIssueForApi(issue: ScanIssue): ScanIssue {
     helpUrl: issue.helpUrl,
     failureSummary: issue.failureSummary?.slice(0, 4000),
     targets: issue.targets,
+    ...(issue.sourceUrl ? { sourceUrl: issue.sourceUrl } : {}),
   };
 }

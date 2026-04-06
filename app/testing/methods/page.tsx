@@ -8,7 +8,7 @@ export default function TestingMethodsPage() {
         icon="workflow"
         title="Testing plan"
         accentClass="from-cyan-600/22 via-card/95 to-slate-950/45"
-        subtitle="Scan a URL for a step-by-step plan: what the automated scan covered, what experts should check, and what to validate with real users."
+        subtitle="Scan a page and get a practical plan: what the automatic check already covered, what to verify yourself or with a screen reader, and simple ideas for testing with real people."
       />
 
       <TestingAgentRunner

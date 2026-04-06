@@ -2,10 +2,15 @@ import Anthropic from "@anthropic-ai/sdk";
 import { GoogleGenerativeAI, GoogleGenerativeAIFetchError, type Content } from "@google/generative-ai";
 import type { ScanIssue } from "@/lib/axeScanner";
 import { buildChatSystemPrompt, buildExplainPrompt, type ChatIssueFocus } from "@/lib/prompts";
+import { parseManualTestCasesJson, type ManualTestCase } from "@/lib/manualTestScenario";
 import {
   buildTestingAnalysisMessages,
   type TestingAnalysisMode,
 } from "@/lib/testingAnalysisPrompts";
+import {
+  buildManualTestScenariosPrompt,
+  manualTestScenariosSystemPrompt,
+} from "@/lib/testingScenariosPrompt";
 
 /** AssemblyAI LLM Gateway model ids */
 const aaDefaultModel = process.env.ASSEMBLYAI_MODEL_DEFAULT ?? "claude-sonnet-4-5-20250929";
@@ -538,7 +543,7 @@ export async function explainIssue(issue: ScanIssue): Promise<{ text: string; mo
       {
         role: "system",
         content:
-          "You are an accessibility expert. Answer using the exact sections the user asks for, including QA Mode headings.",
+          "You are an accessibility expert. Follow the user message structure exactly. Write in professional corporate prose: no Markdown hash headings, no asterisk or underscore emphasis. Keep tables and the required ADD/REMOVE lines as specified.",
       },
       { role: "user", content: userContent },
     ],
@@ -592,4 +597,30 @@ export async function analyzeScanForTestingAgent(
       { role: "user", content: user },
     ],
   });
+}
+
+/** Structured manual QA scenarios from scan context (JSON from model). */
+export async function generateManualTestScenarios(
+  scannedUrl: string,
+  issues: ScanIssue[],
+): Promise<{ testCases: ManualTestCase[]; model: string; raw: string }> {
+  const user = buildManualTestScenariosPrompt(scannedUrl, issues);
+  const system = manualTestScenariosSystemPrompt();
+  const { text, model } = await runChatCompletion({
+    assemblyModel: aaDefaultModel,
+    anthropicModel: antSonnetModel,
+    geminiModel: gemDefaultModel,
+    max_tokens: 8192,
+    messages: [
+      { role: "system", content: system },
+      { role: "user", content: user },
+    ],
+  });
+  let testCases: ManualTestCase[] = [];
+  try {
+    testCases = parseManualTestCasesJson(text);
+  } catch {
+    testCases = [];
+  }
+  return { testCases, model, raw: text };
 }

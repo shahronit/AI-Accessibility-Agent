@@ -128,6 +128,13 @@
   html {
     @apply font-sans;
   }
+  html.a11y-pref-reduced-motion *,
+  html.a11y-pref-reduced-motion *::before,
+  html.a11y-pref-reduced-motion *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
 }
 
 @layer components {

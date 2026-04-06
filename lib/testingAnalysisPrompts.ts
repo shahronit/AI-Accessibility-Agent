@@ -1,8 +1,11 @@
 import type { ScanIssue } from "@/lib/axeScanner";
+import { TESTING_NORMATIVE_BASIS } from "@/lib/testingNorms";
 
 export type TestingAnalysisMode = "pour" | "methods" | "checkpoints" | "comprehensive";
 
-const BASE_AGENT = `You are the Accessibility AI Agent. You receive the **complete** list of automated findings from an axe-core scan (every violation detected for the page—not a single-issue sample). Your job is to analyze **all** findings together in relation to the requested framework. Reference specific rule IDs and issue indices from the data. If many issues share a theme, group them. Do not pretend only one issue exists.`;
+const BASE_AGENT = `You are the Accessibility AI Agent. You receive the **complete** list of automated findings from an axe-core scan (every violation detected for the page—not a single-issue sample). Your job is to analyze **all** findings together in relation to the requested framework. Reference specific rule IDs and issue indices from the data. If many issues share a theme, group them. Do not pretend only one issue exists.
+
+${TESTING_NORMATIVE_BASIS}`;
 
 const OUTPUT_RULES = `OUTPUT RULES (strict):
 - Use ## for section titles, **bold** for emphasis, and Markdown pipe tables where they help. Do not use # at the start of a line (use ## or deeper only).
@@ -41,7 +44,7 @@ export function buildTestingAnalysisMessages(
 
 ${OUTPUT_RULES}
 
-The axe scan returned **zero** violations for this URL. Write a concise report for mode **${mode}**: confirm the automated pass, state limits of automation, and supply a **non-repetitive** checklist of manual / user-testing steps appropriate to this framework. Tables optional. Still include ## Priority items to address with proactive verification steps (not empty boilerplate).`;
+The axe scan returned **zero** violations for this URL. Write a concise report for mode **${mode}**: confirm the automated pass, state limits of automation, and supply a **non-repetitive** manual verification checklist drawn from **WebAIM’s WCAG 2 checklist** and **W3C Quickref** themes (plus **Granicus-style** task-flow checks where relevant). For **508**, note alignment with **WCAG 2.0 A/AA** only—not legacy §1194.22 tables. Tables optional. Still include ## Priority items to address with proactive verification steps (not empty boilerplate).`;
     const user = `Scanned URL: ${scannedUrl}
 Total automated findings: 0
 No findings JSON.`;
@@ -60,29 +63,29 @@ No findings JSON.`;
 
 ${OUTPUT_RULES}
 
-Framework: **WCAG POUR** (W3C): Perceivable, Operable, Understandable, Robust.
+Framework: **WebAIM WCAG 2 Checklist structure** — same four pillars as W3C **POUR** (Guidelines **1.x Perceivable, 2.x Operable, 3.x Understandable, 4.x Robust**). Map each finding to the **best-matching guideline area** and name the **likely WCAG 2.x success criterion** (level A/AA/AAA when inferable from axe metadata).
 
 Output structure:
 ## Executive overview
-2–4 **unique** bullets on how the **entire scan** relates to accessibility norms (no copy-paste into later sections).
+2–4 **unique** bullets on how the **entire scan** relates to these checklist norms (no copy-paste into later sections).
 
 ## Perceivable
-Map **all** relevant findings (alt text, contrast, captions, etc.). Table: | Issue # | Rule ID | Why it hurts perception | Brief fix direction |
+Map **all** relevant findings (non-text content, time-based media, adaptable content, distinguishable—including contrast, reflow-related signals axe reports, etc.). Table: | Issue # | Rule ID | Likely WCAG SC | Checklist theme (WebAIM-style) | Brief fix direction |
 
 ## Operable
-Keyboard, focus, timing, navigation, inputs—**only** findings not already fully covered in Perceivable; same table style.
+Keyboard, focus, timing, navigation, inputs, pointer/modality—**only** findings not already fully covered in Perceivable; **same table columns**.
 
 ## Understandable
-Labels, language, predictability, errors—unique rows only.
+Readable, predictable, input assistance—unique rows only; **same table columns**.
 
 ## Robust
-Parsing, ARIA, AT compatibility—unique rows only.
+Compatible (name/role/value, status messages, etc.)—unique rows only; **same table columns**.
 
 ## Cross-cutting priorities
 Top 5 remediation **themes** (grouped), not a repeat of table rows.
 
 ## What automated testing missed
-Short list of gaps for **manual** or **user** testing—must not duplicate Executive overview wording.`;
+Short list of **WebAIM checklist / Quickref** items axe cannot fully prove—**manual or user** testing—must not duplicate Executive overview wording.`;
 
     const user = `${intro}
 
@@ -97,20 +100,24 @@ ${json}`;
 
 ${OUTPUT_RULES}
 
-Framework: **Testing methods** — Automated (axe), Manual (expert + AT), User testing (people with disabilities).
+Framework: **Verification methods aligned to public checklists**
+- **Automated:** axe results mapped to **W3C Quickref** success criteria where possible.
+- **Manual expert / AT:** Walk high-value rows from **WebAIM’s WCAG 2 checklist** that automation did not exhaust (keyboard, reading order, custom components, focus visibility, error patterns, multimedia).
+- **User research:** Tasks informed by findings and by **Granicus-style** real-world service journeys (end-to-end tasks, forms, critical content), without replacing WCAG coverage.
+- **508 note:** If relevant, state verification targets **WCAG 2.0 A/AA** equivalence—not the outdated WebAIM §1194.22 checklist.
 
 Output:
 ## How automated results cover this URL
-**Unique** summary of what axe proved—do not re-list every rule; aggregate by theme and severity.
+**Unique** summary of what axe proved—do not re-list every rule; aggregate by **checklist principle** and severity; mention **likely WCAG SC** themes.
 
 ## Manual testing plan (agent-generated)
-Checklist for NVDA/JAWS/VoiceOver, focus order, reading order, custom widgets—**new** bullets not duplicated from the section above.
+Numbered checklist: NVDA/JAWS/VoiceOver, focus order, reading order, custom widgets, contrast spot-checks—tied to **WebAIM checklist** categories; **new** bullets not duplicated from the section above.
 
 ## User testing suggestions
-3–6 study tasks informed by severity mix—each task **distinct**.
+3–6 study tasks informed by severity mix—each **distinct** and **Granicus-informed** (citizen/task-oriented) where appropriate.
 
 ## Combined timeline suggestion
-Phased timeline in **new** wording (no copy of prior bullets).`;
+Phased timeline in **new** wording (no copy of prior bullets)—Automation → Manual (WebAIM-aligned) → User validation.`;
 
     const user = `${intro}
 
@@ -125,27 +132,33 @@ ${json}`;
 
 ${OUTPUT_RULES}
 
-Framework: **Key checkpoints** — Keyboard navigation, color contrast, alternative text, forms & labels.
+Framework: **Essential checkpoints** — Merge **WebAIM WCAG 2 checklist** “high-signal” verification buckets with **Granicus-style** digital-service checks. Each section is a checkpoint category; cite **likely WCAG SC** in parentheses where clear.
 
-For **each** checkpoint section, list **every** finding that applies (issue #, rule id, one line). If none, say "No automated findings in this bucket." Do **not** repeat the same finding’s description in a second checkpoint—assign it to the best-fit section only.
+For **each** checkpoint section, list **every** finding that applies (issue #, rule id, one line + optional SC). If none, say "No automated findings in this bucket." Do **not** repeat the same finding in a second checkpoint—assign it to the **best-fit** section only.
 
-## Keyboard navigation
-Tab/Enter/Space, focus traps, interactive elements.
+## Keyboard, focus, and interaction
+Tab order, traps, operable controls, visible focus, shortcuts (2.x themes).
 
-## Color contrast
-Contrast-related rules only.
+## Color, contrast, and non-text presentation
+Text/UI contrast, use of color, non-text contrast (1.4.x, 2.5.8 where relevant).
 
-## Alternative text
-Images, icons, meaningful vs decorative.
+## Text alternatives and media
+Images, icons, meaningful vs decorative; captions/transcripts if signals exist in findings (1.1.x, 1.2.x).
 
-## Forms and labels
-Inputs, labels, errors, associations.
+## Structure, navigation, and language
+Headings, landmarks, page title, link purpose, language of page/parts (2.4.x, 3.1.x).
+
+## Forms, errors, and understandable inputs
+Labels, instructions, errors, predictability (3.2.x, 3.3.x).
+
+## Robustness and compatibility
+ARIA/name-role-value, parsing-related signals, compatibility with AT (4.1.x).
 
 ## Severity summary table
 | Impact | Count | Representative rules | (aggregate only—no duplicate issue rows.)
 
 ## Next actions
-Ordered developer actions **without** repeating full checkpoint tables—reference issue # / rule id.`;
+Ordered developer actions **without** repeating full checkpoint tables—reference issue # / rule id and **WCAG SC** when helpful.`;
 
     const user = `${intro}
 
@@ -160,12 +173,13 @@ ${json}`;
 
 ${OUTPUT_RULES}
 
-Produce one integrated report:
-1. **POUR** — one compact table per pillar; **no repeated rows** across pillars (each finding appears once, best pillar).
-2. **Methods** — automation summary + manual + user testing in **non-overlapping** bullets.
-3. **Checkpoints** — high-level mapping only if not already redundant with POUR (skip duplicate lists; cross-reference).
-4. **Prioritized backlog** — merged duplicate themes, single source of truth.
-5. **Honest limits** of axe-only testing — **unique** sentences.
+Produce one integrated report aligned to **WebAIM WCAG 2 checklist + W3C Quickref SC naming**, with **508** framed as **WCAG 2.0 A/AA** (not legacy §1194.22) and **Granicus-style** extras for manual/task coverage:
+
+1. **Checklist pillars (POUR)** — one compact table per principle; columns: | Issue # | Rule ID | Likely WCAG SC | WebAIM-style theme | Fix hint | — **no repeated rows** across pillars (each finding appears once, best pillar).
+2. **Verification methods** — automation (axe) coverage + **WebAIM-aligned** manual plan + **Granicus-informed** user tasks — **non-overlapping** bullets.
+3. **Essential checkpoints** — short cross-check only if not redundant (e.g. “Keyboard/focus bucket: see Operable table rows …”); avoid duplicate tables.
+4. **Prioritized backlog** — merged themes, single source of truth; reference **WCAG SC** when possible.
+5. **Honest limits** of axe-only testing vs full **Quickref** conformance — **unique** sentences.
 
 Use ## headings and tables. Never analyze only one issue unless the scan truly contains one.`;
 

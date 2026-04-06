@@ -8,7 +8,7 @@ export default function TestingPourPage() {
         icon="layers"
         title="Core principles"
         accentClass="from-indigo-600/28 via-card/95 to-violet-950/40"
-        subtitle="Scan a URL to see how each issue fits the four accessibility ideas: perceivable, operable, understandable, and robust."
+        subtitle="Scan a page and see each issue sorted into four simple ideas: Can people perceive it, use it, understand it, and will it work reliably with assistive technology? Official guideline references are included when helpful."
       />
 
       <TestingAgentRunner

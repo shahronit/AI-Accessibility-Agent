@@ -9,6 +9,7 @@ import {
   Loader2,
   OctagonAlert,
   Sparkles,
+  Ticket,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -36,9 +37,19 @@ type Props = {
   onSelect: (issue: ScanIssue) => void;
   onExplain: (issue: ScanIssue) => void;
   explaining?: boolean;
+  onReportJira?: (issue: ScanIssue) => void;
+  jiraLoading?: boolean;
 };
 
-export function IssueCard({ issue, selected, onSelect, onExplain, explaining }: Props) {
+export function IssueCard({
+  issue,
+  selected,
+  onSelect,
+  onExplain,
+  explaining,
+  onReportJira,
+  jiraLoading,
+}: Props) {
   const ImpactIcon = impactIcon[issue.impact];
 
   return (
@@ -70,31 +81,60 @@ export function IssueCard({ issue, selected, onSelect, onExplain, explaining }: 
           </Badge>
           <span className="text-primary/90 font-mono text-sm tracking-tight">{issue.id}</span>
         </div>
-        <Button
-          type="button"
-          size="sm"
-          variant="secondary"
-          className="gap-1.5 shadow-sm"
-          onClick={(e) => {
-            e.stopPropagation();
-            onExplain(issue);
-          }}
-          disabled={explaining}
-        >
-          {explaining ? (
-            <>
-              <Loader2 className="size-3.5 animate-spin" aria-hidden />
-              Working…
-            </>
-          ) : (
-            <>
-              <Sparkles className="size-3.5 text-amber-400" aria-hidden />
-              Explain with AI
-            </>
-          )}
-        </Button>
+        <div className="flex flex-wrap items-center gap-1.5">
+          {onReportJira ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="gap-1.5 border-white/10 bg-card/40 shadow-sm"
+              onClick={(e) => {
+                e.stopPropagation();
+                onReportJira(issue);
+              }}
+              disabled={jiraLoading}
+            >
+              {jiraLoading ? (
+                <Loader2 className="size-3.5 animate-spin" aria-hidden />
+              ) : (
+                <Ticket className="size-3.5" aria-hidden />
+              )}
+              Jira
+            </Button>
+          ) : null}
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            className="gap-1.5 shadow-sm"
+            title="Opens full AI explanation and chat in a new tab"
+            onClick={(e) => {
+              e.stopPropagation();
+              onExplain(issue);
+            }}
+            disabled={explaining}
+          >
+            {explaining ? (
+              <>
+                <Loader2 className="size-3.5 animate-spin" aria-hidden />
+                Opening…
+              </>
+            ) : (
+              <>
+                <Sparkles className="size-3.5 text-amber-400" aria-hidden />
+                Explain with AI
+              </>
+            )}
+          </Button>
+        </div>
       </CardHeader>
       <CardContent className="space-y-3">
+        {issue.sourceUrl ? (
+          <p className="text-muted-foreground font-mono text-xs break-all">
+            <span className="text-foreground/80 font-sans font-medium">From: </span>
+            {issue.sourceUrl}
+          </p>
+        ) : null}
         <p className="text-sm leading-relaxed">{issue.description}</p>
         {issue.html ? (
           <div className="space-y-1">

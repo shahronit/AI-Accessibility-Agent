@@ -1,4 +1,4 @@
-import { ClipboardCheck, Layers, LayoutGrid, Workflow, type LucideIcon } from "lucide-react";
+import { ClipboardCheck, Layers, LayoutGrid, Sparkles, Workflow, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const HERO_ICONS = {
@@ -6,6 +6,7 @@ const HERO_ICONS = {
   layers: Layers,
   workflow: Workflow,
   clipboardCheck: ClipboardCheck,
+  sparkles: Sparkles,
 } as const satisfies Record<string, LucideIcon>;
 
 export type TestingHeroIconKey = keyof typeof HERO_ICONS;
