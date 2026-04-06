@@ -63,6 +63,23 @@ On **macOS/Windows**, scans use your **installed Chromium-based browser** (macOS
 
 The scan endpoint applies basic **SSRF** checks (scheme, blocked hostnames, private IPv4). Running a public URL scanner still carries abuse risk—add **auth**, **rate limits**, and monitoring before wide deployment.
 
+## Deploy a public URL (Vercel)
+
+Anyone can use the app in a browser after you host it—no need for them to install Node or run localhost.
+
+1. Push this repo to GitHub (already done if you use [AI-Accessibility-Agent](https://github.com/shahronit/AI-Accessibility-Agent)).
+2. Go to [vercel.com](https://vercel.com), sign in, and click **Add New… → Project**.
+3. **Import** your GitHub repository. Framework Preset should detect **Next.js**; leave the default build command (`next build`) and output.
+4. Under **Environment Variables**, add the same keys you use in `.env.local` (at minimum one LLM key such as `GEMINI_API_KEY`). Copy names and optional values from `.env.example`.
+   - **Do not set `PUPPETEER_EXECUTABLE_PATH` on Vercel.** Production runs on Linux; the app uses [`@sparticuz/chromium`](https://github.com/Sparticuz/chromium) automatically when that variable is unset.
+   - Add Jira variables only if you want live Jira from the deployed site.
+5. Click **Deploy**. When it finishes, Vercel gives you a URL like `https://your-project.vercel.app`—share that link.
+6. Optional: **Project → Settings → Domains** to attach a custom domain.
+
+**Plans:** Headless scans need a **large function** (`vercel.json` sets **3008 MB** RAM and **60s** for `/api/scan`). On Vercel, that typically requires a **Pro** (or higher) team—free/hobby limits may be too small or too short and scans can time out. Long AI routes (`/api/chat`, `/api/ai-explain`, `/api/ai-testing-analysis`, `/api/testing-scenarios`) are configured for up to **120s** and may also need a paid tier. If a deploy fails or scans abort early, upgrade the project or reduce scan scope in code.
+
+**Security:** A public scanner can be abused (SSRF, cost). Before sharing widely, consider adding **authentication**, **rate limiting**, and monitoring. See the Security notes below.
+
 ## Scripts
 
 - `npm run dev` — development server
