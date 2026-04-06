@@ -73,8 +73,15 @@ Anyone can use the app in a browser after you host it—no need for them to inst
 4. Under **Environment Variables**, add the same keys you use in `.env.local` (at minimum one LLM key such as `GEMINI_API_KEY`). Copy names and optional values from `.env.example`.
    - **Do not set `PUPPETEER_EXECUTABLE_PATH` on Vercel.** Production runs on Linux; the app uses [`@sparticuz/chromium`](https://github.com/Sparticuz/chromium) automatically when that variable is unset.
    - Add Jira variables only if you want live Jira from the deployed site.
-5. Click **Deploy**. When it finishes, Vercel gives you a URL like `https://your-project.vercel.app`—share that link.
-6. Optional: **Project → Settings → Domains** to attach a custom domain.
+5. Click **Deploy**. When it finishes, Vercel gives you a **free HTTPS URL** you can share—no domain registration required: `https://<project-name>.vercel.app`.
+
+### Free “domain” (no purchase)
+
+- **Included subdomain:** On Vercel’s **free (Hobby)** plan you still get a working public site at **`https://your-name.vercel.app`**. That counts as a free address: visitors use it like any website; you do **not** need to buy `something.com` unless you want to.
+- **Nicer free URL:** In Vercel go to **Project → Settings → General** and change **Project Name**. Your URL becomes `https://<that-name>.vercel.app` (must be unique on Vercel). Redeploy if prompted.
+- **Custom domain (optional, often paid):** Buying `example.com` from a registrar is separate. If you already have **any** domain (including free subdomains from a school, employer, or some DNS providers), add it under **Project → Settings → Domains** and set the DNS records Vercel shows. This app does not require a custom domain to be shared publicly.
+
+6. Optional: **Project → Settings → Domains** to attach a custom domain you already own.
 
 **Plans:** Headless scans need a **large function** (`vercel.json` sets **3008 MB** RAM and **60s** for `/api/scan`). On Vercel, that typically requires a **Pro** (or higher) team—free/hobby limits may be too small or too short and scans can time out. Long AI routes (`/api/chat`, `/api/ai-explain`, `/api/ai-testing-analysis`, `/api/testing-scenarios`) are configured for up to **120s** and may also need a paid tier. If a deploy fails or scans abort early, upgrade the project or reduce scan scope in code.
 
