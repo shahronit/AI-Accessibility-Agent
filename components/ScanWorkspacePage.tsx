@@ -684,7 +684,7 @@ export default function ScanWorkspacePage() {
         <p className="mx-auto flex max-w-2xl flex-wrap items-center justify-center gap-2">
           <Bot className="text-primary size-4 shrink-0" aria-hidden />
           <span>
-            <strong className="text-foreground">Accessibility AI Agent</strong> · Voice uses the Web Speech API · Scans
+            <strong className="text-foreground">AI Accessibility Agent</strong> · Voice uses the Web Speech API · Scans
             use headless Chromium on the server.
           </span>
         </p>

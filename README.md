@@ -1,4 +1,4 @@
-# Accessibility AI Agent
+# AI Accessibility Agent
 
 Next.js (App Router) workspace that scans public URLs with **axe-core** in **headless Chromium**, explains findings with **Gemini** ([Google AI Studio](https://aistudio.google.com/) free tier), **Claude** (Anthropic), or the **AssemblyAI LLM Gateway**, and includes a **Web Speech API** voice agent plus AI chat.
 
@@ -73,7 +73,7 @@ Anyone can use the app in a browser after you host it—no need for them to inst
 4. Under **Environment Variables**, add the same keys you use in `.env.local` (at minimum one LLM key such as `GEMINI_API_KEY`). Copy names and optional values from `.env.example`.
    - **Do not set `PUPPETEER_EXECUTABLE_PATH` on Vercel.** Production runs on Linux; the app uses [`@sparticuz/chromium`](https://github.com/Sparticuz/chromium) automatically when that variable is unset.
    - Add Jira variables only if you want live Jira from the deployed site.
-5. Click **Deploy**. When it finishes, Vercel gives you a **free HTTPS URL** you can share—no domain registration required: `https://<project-name>.vercel.app`.
+5. Click **Deploy**. When it finishes, Vercel gives you a **free HTTPS URL** you can share—no domain registration required: `https://<project-name>.vercel.app`. For this repo, if the Vercel **Project Name** is `AI-Accessibility-Agent`, the hostname is usually **`https://ai-accessibility-agent.vercel.app`** (Vercel uses lowercase). Confirm under **Project → Settings → Domains**.
 
 ### Free “domain” (no purchase)
 

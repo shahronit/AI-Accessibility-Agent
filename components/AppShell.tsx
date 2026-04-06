@@ -135,7 +135,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
           {!sidebarCollapsed && (
             <div className="min-w-0">
-              <p className="truncate text-sm font-semibold tracking-tight">Accessibility AI</p>
+              <p className="truncate text-sm font-semibold tracking-tight">AI Accessibility Agent</p>
               <p className="text-muted-foreground truncate text-xs">AI-powered accessibility testing</p>
             </div>
           )}

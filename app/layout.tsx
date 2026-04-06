@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Accessibility AI Agent",
+  title: "AI Accessibility Agent",
   description:
     "Your AI agent for WCAG-aligned accessibility scans, voice control, structured explanations, and chat.",
 };
