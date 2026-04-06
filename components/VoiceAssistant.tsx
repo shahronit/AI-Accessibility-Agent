@@ -302,7 +302,7 @@ export function VoiceAssistant({ onCommand }: Props) {
           )}
         </div>
         <p className="text-muted-foreground text-xs">
-          Listening ends automatically after {VOICE_SILENCE_END_MS / 1000} seconds without new speech. Stop speech also stops the microphone and TTS.
+          Listening stops after {VOICE_SILENCE_END_MS / 1000}s of silence.
         </p>
 
         <div className="space-y-2 rounded-xl border border-dashed border-white/15 bg-muted/20 p-3">
@@ -336,8 +336,7 @@ export function VoiceAssistant({ onCommand }: Props) {
           <p className="text-muted-foreground text-sm">Fix the secure-context warning above to enable the microphone button.</p>
         ) : (
           <p className="text-muted-foreground text-sm">
-            Try: &quot;Scan this page&quot;, &quot;Explain issue 1&quot;, &quot;Explain the issues&quot; (AI chat), &quot;Read the results&quot;,
-            &quot;Show critical issues&quot;, or &quot;How to fix this issue&quot;. Chrome uses an online speech service—stay on the network.
+            Examples: &quot;Scan this page&quot;, &quot;Explain issue 1&quot;, &quot;Explain the issues&quot;, &quot;Read the results&quot;.
           </p>
         )}
         {lastHeard ? (

@@ -3,6 +3,7 @@
 import { jsPDF } from "jspdf";
 import type { ChatMessage } from "@/lib/aiClient";
 import type { ImpactLevel, ScanIssue } from "@/lib/axeScanner";
+import { isSeparatorRow, isTableRow } from "@/lib/reportMdShared";
 
 export type IssueExportFilter = "all" | ImpactLevel;
 
@@ -273,4 +274,145 @@ export function exportChatPdf(params: {
   }
 
   doc.save(`a11y-ai-chat-${Date.now()}.pdf`);
+}
+
+function stripInlineMarkdown(s: string): string {
+  return s
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/`([^`]+)`/g, "$1");
+}
+
+/**
+ * PDF export for testing hub AI reports (POUR, methods, checkpoints, comprehensive).
+ */
+export function exportTestingHubReportPdf(params: {
+  reportTitle: string;
+  mode: string;
+  scannedUrl: string;
+  issueCount: number;
+  model: string | null;
+  body: string;
+}) {
+  const doc = new jsPDF({ unit: "pt", format: "a4" });
+  const margin = 48;
+  const pageW = doc.internal.pageSize.getWidth();
+  const maxW = pageW - margin * 2;
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const yRef = { y: margin };
+  const lineHeight = 12;
+  const headLine = 14;
+
+  const ensure = (need: number) => {
+    if (yRef.y + need > pageHeight - margin) {
+      doc.addPage();
+      yRef.y = margin;
+    }
+  };
+
+  const addWrapped = (text: string, opts?: { bold?: boolean; size?: number; color?: [number, number, number] }) => {
+    doc.setFontSize(opts?.size ?? 10);
+    doc.setFont("helvetica", opts?.bold ? "bold" : "normal");
+    if (opts?.color) doc.setTextColor(opts.color[0], opts.color[1], opts.color[2]);
+    else doc.setTextColor(0, 0, 0);
+    const lines = doc.splitTextToSize(stripInlineMarkdown(text), maxW) as string[];
+    for (const line of lines) {
+      ensure(lineHeight);
+      doc.text(line, margin, yRef.y);
+      yRef.y += lineHeight;
+    }
+    doc.setTextColor(0, 0, 0);
+  };
+
+  doc.setFontSize(18);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(0, 0, 0);
+  doc.text("Testing hub report", margin, yRef.y);
+  yRef.y += 26;
+  addWrapped(params.reportTitle, { bold: true, size: 12 });
+  yRef.y += 4;
+  doc.setFont("helvetica", "normal");
+  addWrapped(`URL: ${params.scannedUrl}`);
+  addWrapped(`Mode: ${params.mode}`);
+  addWrapped(`Automated findings: ${params.issueCount}`);
+  if (params.model?.trim()) {
+    addWrapped(`Model: ${params.model}`);
+  }
+  addWrapped(`Generated: ${new Date().toISOString()}`);
+  yRef.y += 12;
+
+  const rawLines = params.body.split("\n");
+  let i = 0;
+  while (i < rawLines.length) {
+    const raw = rawLines[i];
+    const line = raw.trimEnd();
+    const t = line.trim();
+
+    if (!t) {
+      yRef.y += 6;
+      i++;
+      continue;
+    }
+
+    const hm = t.match(/^#{1,6}\s+(.+)$/);
+    if (hm) {
+      yRef.y += 8;
+      ensure(headLine * 2);
+      doc.setFontSize(12);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(0, 0, 0);
+      const tl = doc.splitTextToSize(stripInlineMarkdown(hm[1]), maxW) as string[];
+      for (const L of tl) {
+        ensure(headLine);
+        doc.text(L, margin, yRef.y);
+        yRef.y += headLine;
+      }
+      yRef.y += 4;
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "normal");
+      i++;
+      continue;
+    }
+
+    if (isTableRow(line)) {
+      const rows: string[] = [];
+      while (i < rawLines.length && isTableRow(rawLines[i])) {
+        const r = rawLines[i].trim();
+        if (!isSeparatorRow(r)) {
+          const cells = r
+            .replace(/^\||\|$/g, "")
+            .split("|")
+            .map((c) => stripInlineMarkdown(c.trim()))
+            .join("  ·  ");
+          rows.push(cells);
+        }
+        i++;
+      }
+      yRef.y += 4;
+      doc.setFontSize(9);
+      doc.setFont("helvetica", "normal");
+      for (const row of rows) {
+        const lines = doc.splitTextToSize(row, maxW) as string[];
+        for (const L of lines) {
+          ensure(11);
+          doc.text(L, margin, yRef.y);
+          yRef.y += 11;
+        }
+      }
+      doc.setFontSize(10);
+      yRef.y += 8;
+      continue;
+    }
+
+    if (t.startsWith("✅") || /^\[ADD\]/i.test(t)) {
+      addWrapped(line, { color: [0, 110, 40] });
+    } else if (t.startsWith("❌") || /^\[REMOVE\]/i.test(t)) {
+      addWrapped(line, { color: [190, 30, 30] });
+    } else {
+      addWrapped(line);
+    }
+    i++;
+  }
+
+  const safeMode = params.mode.replace(/[^a-z0-9-]/gi, "-").slice(0, 32);
+  doc.save(`a11y-testing-hub-${safeMode}-${Date.now()}.pdf`);
 }

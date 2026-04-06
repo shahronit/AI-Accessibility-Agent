@@ -131,11 +131,7 @@ export function ChatPanel({
                 AI chat
                 <Sparkles className="text-amber-400 size-4" aria-hidden />
               </CardTitle>
-              <p className="text-muted-foreground text-sm">
-                Uses your <strong>full scan</strong> (all findings). When a row is selected, you can go deep on its{" "}
-                <strong>AI explanation</strong>—the assistant still treats the whole audit as in scope. Tables and ✅/❌
-                hints render when the model uses them.
-              </p>
+              <p className="text-muted-foreground text-sm">Context includes the full scan; narrow to a row after Explain with AI.</p>
             </div>
           </div>
           <Button
@@ -160,9 +156,7 @@ export function ChatPanel({
           <div className="space-y-3 pr-1" role="log" aria-live="polite" aria-relevant="additions">
             {messages.length === 0 ? (
               <p className="text-muted-foreground text-sm">
-                No messages yet. Run a scan first so the assistant sees <strong>every</strong> violation. Then use{" "}
-                <strong>Explain with AI</strong> on a row for depth—or say &quot;Explain the issues&quot; by voice for a
-                scan-wide summary in chat.
+                Run a scan first. Say &quot;Explain the issues&quot; by voice or type a question about the results.
               </p>
             ) : (
               messages.map((m, i) => (
@@ -193,11 +187,7 @@ export function ChatPanel({
           <Textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder={
-              selectedIssue
-                ? "Ask about this issue, the explanation, or how it fits the whole audit…"
-                : "Ask about all findings, severity mix, or WCAG themes—or select a row and explain it…"
-            }
+            placeholder={selectedIssue ? "Ask about this issue…" : "Ask about the scan…"}
             rows={2}
             className="min-h-[72px] flex-1 resize-none"
             onKeyDown={(e) => {
@@ -244,9 +234,7 @@ export function ChatPanel({
           </div>
         </div>
         {!scanSummary || scanSummary.total === 0 ? (
-          <p className="text-muted-foreground text-xs">
-            Run a scan to attach the complete result set (every finding) to the assistant.
-          </p>
+          <p className="text-muted-foreground text-xs">Run a scan to attach results to chat.</p>
         ) : null}
       </CardContent>
     </Card>

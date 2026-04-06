@@ -351,8 +351,7 @@ export default function Home() {
                 Accessibility AI Agent
               </h1>
               <p className="text-muted-foreground mt-1 max-w-xl text-sm leading-relaxed">
-                Scan any public page, review findings by severity, get structured AI explanations, and chat or dictate
-                follow-ups—all in one workspace.
+                Scan a page, review axe findings, and use AI explain, chat, or voice.
               </p>
             </div>
           </div>
@@ -391,15 +390,23 @@ export default function Home() {
               <div>
                 <CardTitle className="text-xl">Target &amp; scan</CardTitle>
                 <CardDescription className="text-muted-foreground mt-1 max-w-2xl text-sm">
-                  The agent loads your URL in headless Chromium, runs axe-core, and returns{" "}
-                  <strong className="text-foreground font-medium">every</strong> violation it detects—normalized for AI,
-                  exports, and the testing hub—not a single-issue sample.
+                  Headless Chromium + axe: all violations returned for this URL (for AI, exports, and the{" "}
+                  <Link href="/testing" className="text-primary underline-offset-2 hover:underline">
+                    testing hub
+                  </Link>
+                  ).
                 </CardDescription>
               </div>
             </div>
           </CardHeader>
           <CardContent className="space-y-4 pt-6">
-            <UrlInput url={url} onUrlChange={setUrl} onScan={() => void runScan()} loading={scanLoading} />
+            <UrlInput
+              url={url}
+              onUrlChange={setUrl}
+              onScan={() => void runScan()}
+              loading={scanLoading}
+              showHint
+            />
             {scanError ? (
               <Alert variant="destructive">
                 <AlertTitle>Scan error</AlertTitle>
@@ -410,7 +417,7 @@ export default function Home() {
               <div className="space-y-2">
                 <p className="text-muted-foreground flex items-center gap-2 text-sm font-medium">
                   <History className="text-primary size-4" aria-hidden />
-                  Recent targets (saved locally)
+                  Recent URLs
                 </p>
                 <ul className="flex flex-wrap gap-2">
                   {history.slice(0, 6).map((h) => (
@@ -450,14 +457,13 @@ export default function Home() {
                   </h2>
                   {issues.length > 0 ? (
                     <p className="text-muted-foreground text-xs">
-                      Filter: <strong>{filterExportSubtitle}</strong> · {filteredIssueCount} issue
-                      {filteredIssueCount === 1 ? "" : "s"} in exports ·{" "}
-                      <Link href="/testing" className="text-primary font-medium underline-offset-2 hover:underline">
-                        POUR / methods / checkpoints
+                      <strong>{filterExportSubtitle}</strong> · {filteredIssueCount} in exports ·{" "}
+                      <Link href="/testing" className="text-primary underline-offset-2 hover:underline">
+                        Testing hub
                       </Link>
                     </p>
                   ) : (
-                    <p className="text-muted-foreground text-xs">Run a scan to populate this board.</p>
+                    <p className="text-muted-foreground text-xs">Run a scan to see findings.</p>
                   )}
                 </div>
               </div>
@@ -506,7 +512,7 @@ export default function Home() {
             ) : issues.length === 0 ? (
               <div className="text-muted-foreground border-border/60 flex flex-col items-center justify-center gap-3 rounded-2xl border border-dashed py-16 text-center">
                 <ScanSearch className="size-12 opacity-25" aria-hidden />
-                <p className="max-w-sm text-sm">No findings yet. Enter a URL above and run a scan to see issues here.</p>
+                <p className="max-w-sm text-sm">No findings yet. Scan a URL above.</p>
               </div>
             ) : (
               <ResultsList
@@ -535,9 +541,7 @@ export default function Home() {
                       <CardTitle className="text-base">AI explanation</CardTitle>
                       {explainModel ? (
                         <p className="text-muted-foreground mt-0.5 text-xs">Model · {explainModel}</p>
-                      ) : (
-                        <p className="text-muted-foreground mt-0.5 text-xs">Structured fix guidance &amp; QA tables</p>
-                      )}
+                      ) : null}
                     </div>
                   </div>
                   <Button
@@ -578,7 +582,7 @@ export default function Home() {
                   </div>
                 ) : (
                   !explainLoading && (
-                    <p className="text-muted-foreground text-sm">Select an issue and choose Explain with AI.</p>
+                    <p className="text-muted-foreground text-sm">Select an issue, then Explain with AI.</p>
                   )
                 )}
                 {explanation && selected ? (

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ClipboardCheck, Layers, LayoutGrid, Sparkles, Workflow } from "lucide-react";
+import { ClipboardCheck, Layers, LayoutGrid, Workflow } from "lucide-react";
 import { TestingAgentRunner } from "@/components/TestingAgentRunner";
 import { TestingHero } from "@/components/TestingHero";
 import { cn } from "@/lib/utils";
@@ -11,10 +11,10 @@ export default function TestingOverviewPage() {
   return (
     <article className="space-y-10 pb-12">
       <TestingHero
-        icon={LayoutGrid}
+        icon="layoutGrid"
         title="Accessibility testing hub"
         accentClass="from-violet-600/25 via-card/95 to-slate-950/45"
-        subtitle="Each guide runs its own axe scan on the URL you enter, then produces a formatted report—headings, paragraphs, and tables without raw markdown symbols in the UI."
+        subtitle="Each guide runs its own scan on the URL you enter, then builds a formatted report you can export as PDF."
       />
 
       <section aria-labelledby="guides-heading" className="space-y-4">
@@ -54,10 +54,9 @@ export default function TestingOverviewPage() {
 
       <TestingAgentRunner
         mode="comprehensive"
-        icon={Sparkles}
+        icon="sparkles"
         fieldId="testing-overview-url"
         title="Full combined report"
-        description="One scan of your URL: merged POUR view, methods, checkpoints, and a single priority list—written so sections do not repeat the same wording."
         cardAccent="from-violet-500/10 via-card to-slate-950/35"
       />
     </article>

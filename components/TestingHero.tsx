@@ -1,15 +1,25 @@
-import type { LucideIcon } from "lucide-react";
+import { ClipboardCheck, Layers, LayoutGrid, Workflow, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+const HERO_ICONS = {
+  layoutGrid: LayoutGrid,
+  layers: Layers,
+  workflow: Workflow,
+  clipboardCheck: ClipboardCheck,
+} as const satisfies Record<string, LucideIcon>;
+
+export type TestingHeroIconKey = keyof typeof HERO_ICONS;
+
 type Props = {
-  icon: LucideIcon;
+  icon: TestingHeroIconKey;
   title: string;
   subtitle: string;
   /** Tailwind gradient stops, e.g. `from-indigo-600/25 via-card/90 to-violet-950/30` */
   accentClass: string;
 };
 
-export function TestingHero({ icon: Icon, title, subtitle, accentClass }: Props) {
+export function TestingHero({ icon, title, subtitle, accentClass }: Props) {
+  const Icon = HERO_ICONS[icon];
   return (
     <header
       className={cn(

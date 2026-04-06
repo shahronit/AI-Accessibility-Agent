@@ -18,6 +18,8 @@ type Props = {
   fieldId?: string;
   /** When false, only the URL field is shown (use a custom action button elsewhere). */
   showScanButton?: boolean;
+  /** When true, shows a short hint under the field (use on the main scanner only). */
+  showHint?: boolean;
 };
 
 export function UrlInput({
@@ -27,6 +29,7 @@ export function UrlInput({
   loading,
   fieldId = "scan-url",
   showScanButton = true,
+  showHint = false,
 }: Props) {
   const debounced = useDebouncedValue(url, 400);
   const validation = useMemo(() => validateScanUrl(debounced), [debounced]);
@@ -57,7 +60,9 @@ export function UrlInput({
             onChange={(e) => onUrlChange(e.target.value)}
             onBlur={() => setTouched(true)}
             aria-invalid={showError}
-            aria-describedby={showError ? `${fieldId}-error` : `${fieldId}-hint`}
+            aria-describedby={
+              showError ? `${fieldId}-error` : showHint ? `${fieldId}-hint` : undefined
+            }
             className={cn("h-11 pl-10 font-mono text-sm")}
           />
         </div>
@@ -86,12 +91,11 @@ export function UrlInput({
         <p id={`${fieldId}-error`} className="text-destructive text-sm" role="alert">
           {validation.ok ? null : validation.error}
         </p>
-      ) : (
-        <p id={`${fieldId}-hint`} className="text-muted-foreground flex items-start gap-2 text-sm">
-          <ScanSearch className="text-primary mt-0.5 size-4 shrink-0" aria-hidden />
-          Public http(s) URLs only. The agent runs Chromium on the server so results are not blocked by browser CORS.
+      ) : showHint ? (
+        <p id={`${fieldId}-hint`} className="text-muted-foreground text-sm">
+          Public <span className="font-mono text-xs">https</span> URLs only (server-side scan).
         </p>
-      )}
+      ) : null}
     </div>
   );
 }

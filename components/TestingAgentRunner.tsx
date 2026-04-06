@@ -1,8 +1,16 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import type { LucideIcon } from "lucide-react";
-import { Loader2, Sparkles } from "lucide-react";
+import {
+  ClipboardCheck,
+  FileDown,
+  Layers,
+  Loader2,
+  RotateCcw,
+  Sparkles,
+  Workflow,
+  type LucideIcon,
+} from "lucide-react";
 import { ProfessionalReportText } from "@/components/ProfessionalReportText";
 import { UrlInput } from "@/components/UrlInput";
 import { useScanSession } from "@/components/ScanSessionProvider";
@@ -12,16 +20,27 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import type { ScanIssue } from "@/lib/axeScanner";
 import type { TestingAnalysisMode } from "@/lib/testingAnalysisPrompts";
 import { postAppJson, sanitizeIssueForApi } from "@/lib/clientApi";
+import { exportTestingHubReportPdf } from "@/lib/exportReports";
 import { validateScanUrl } from "@/lib/url";
 import { cn } from "@/lib/utils";
 
 const DEFAULT_TEST_URL = "https://dequeuniversity.com/demo/mars/";
 
+const RUNNER_ICONS = {
+  sparkles: Sparkles,
+  layers: Layers,
+  workflow: Workflow,
+  clipboardCheck: ClipboardCheck,
+} as const satisfies Record<string, LucideIcon>;
+
+export type TestingRunnerIconKey = keyof typeof RUNNER_ICONS;
+
 type Props = {
   mode: TestingAnalysisMode;
   title: string;
-  description: string;
-  icon: LucideIcon;
+  /** Optional; omit to avoid duplicate copy when the page hero already explains the section. */
+  description?: string;
+  icon: TestingRunnerIconKey;
   fieldId: string;
   defaultUrl?: string;
   /** Card surface gradient (subtle) */
@@ -32,11 +51,12 @@ export function TestingAgentRunner({
   mode,
   title,
   description,
-  icon: Icon,
+  icon,
   fieldId,
   defaultUrl = DEFAULT_TEST_URL,
   cardAccent = "from-primary/10 via-card/95 to-card",
 }: Props) {
+  const Icon = RUNNER_ICONS[icon];
   const { setScanResults } = useScanSession();
   const [url, setUrl] = useState(defaultUrl);
   const [localScannedUrl, setLocalScannedUrl] = useState<string | null>(null);
@@ -107,6 +127,17 @@ export function TestingAgentRunner({
     }
   }, [url, mode, setScanResults]);
 
+  const resetPanel = useCallback(() => {
+    if (busy) return;
+    setUrl(defaultUrl);
+    setLocalScannedUrl(null);
+    setLocalIssues([]);
+    setAnalysis(null);
+    setModel(null);
+    setScanError(null);
+    setAnalysisError(null);
+  }, [busy, defaultUrl]);
+
   return (
     <Card
       className={cn(
@@ -128,9 +159,11 @@ export function TestingAgentRunner({
             </div>
             <div>
               <CardTitle className="text-lg">{title}</CardTitle>
-              <CardDescription className="text-muted-foreground mt-1.5 max-w-2xl text-sm leading-relaxed">
-                {description}
-              </CardDescription>
+              {description ? (
+                <CardDescription className="text-muted-foreground mt-1.5 max-w-2xl text-sm leading-relaxed">
+                  {description}
+                </CardDescription>
+              ) : null}
             </div>
           </div>
         </div>
@@ -143,8 +176,9 @@ export function TestingAgentRunner({
           loading={phase === "scanning"}
           fieldId={fieldId}
           showScanButton={false}
+          showHint={false}
         />
-        <div className="flex flex-wrap gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <Button
             type="button"
             size="lg"
@@ -163,6 +197,18 @@ export function TestingAgentRunner({
                 Scan URL &amp; generate report
               </>
             )}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="lg"
+            className="gap-2 border-white/15 bg-card/50"
+            disabled={busy}
+            onClick={resetPanel}
+            aria-label="Reset URL, last run, and report on this page"
+          >
+            <RotateCcw className="size-4" aria-hidden />
+            Reset
           </Button>
           {localScannedUrl && !busy ? (
             <p className="text-muted-foreground flex min-h-11 items-center text-xs">
@@ -187,19 +233,44 @@ export function TestingAgentRunner({
           </Alert>
         ) : null}
 
-        {model ? (
-          <p className="text-muted-foreground text-xs">
-            Model · <span className="text-foreground/80">{model}</span>
-          </p>
-        ) : null}
-
         {analysis ? (
-          <div
-            className="border-border/50 from-muted/20 to-card/80 rounded-2xl border bg-gradient-to-b p-6 shadow-inner"
-            role="region"
-            aria-label="Accessibility report"
-          >
-            <ProfessionalReportText text={analysis} dedupe />
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              {model ? (
+                <p className="text-muted-foreground text-xs">
+                  Model · <span className="text-foreground/80">{model}</span>
+                </p>
+              ) : (
+                <span />
+              )}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="gap-2 border-white/15 bg-card/50"
+                onClick={() =>
+                  localScannedUrl &&
+                  exportTestingHubReportPdf({
+                    reportTitle: title,
+                    mode,
+                    scannedUrl: localScannedUrl,
+                    issueCount: localIssues.length,
+                    model,
+                    body: analysis,
+                  })
+                }
+              >
+                <FileDown className="size-4" aria-hidden />
+                Export PDF
+              </Button>
+            </div>
+            <div
+              className="border-border/50 from-muted/20 to-card/80 rounded-2xl border bg-gradient-to-b p-6 shadow-inner"
+              role="region"
+              aria-label="Accessibility report"
+            >
+              <ProfessionalReportText text={analysis} dedupe />
+            </div>
           </div>
         ) : null}
       </CardContent>
