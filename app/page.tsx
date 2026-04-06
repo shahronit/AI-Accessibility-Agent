@@ -336,15 +336,15 @@ export default function Home() {
       >
         Skip to main content
       </a>
-      <header className="agent-header-bar sticky top-0 z-40">
-        <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-5 sm:flex-row sm:items-center sm:justify-between">
+      <header className="agent-header-bar">
+        <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-6 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex flex-wrap items-start gap-4">
-            <div className="from-primary/30 to-primary/5 border-primary/20 flex size-14 shrink-0 items-center justify-center rounded-2xl border bg-gradient-to-br shadow-lg shadow-primary/10">
+            <div className="icon-tile-dashboard flex size-14 shrink-0 items-center justify-center rounded-2xl border shadow-md">
               <LayoutDashboard className="text-primary size-8" aria-hidden />
             </div>
             <div>
-              <p className="text-primary mb-0.5 flex items-center gap-1.5 text-xs font-semibold tracking-wider uppercase">
-                <Sparkles className="size-3.5" aria-hidden />
+              <p className="text-primary/90 mb-0.5 flex items-center gap-1.5 text-xs font-semibold tracking-wider uppercase">
+                <Sparkles className="size-3.5 text-amber-400/85" aria-hidden />
                 WCAG · Voice · AI
               </p>
               <h1 className="agent-title-gradient text-3xl font-bold tracking-tight md:text-4xl">

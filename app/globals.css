@@ -84,24 +84,25 @@
 }
 
 .dark {
-  --background: oklch(0.13 0.02 265);
-  --foreground: oklch(0.97 0.01 265);
-  --card: oklch(0.18 0.025 265);
-  --card-foreground: oklch(0.97 0.01 265);
-  --popover: oklch(0.18 0.025 265);
-  --popover-foreground: oklch(0.97 0.01 265);
-  --primary: oklch(0.78 0.14 195);
-  --primary-foreground: oklch(0.14 0.04 265);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
+  /* Cool slate base; primary aligns with teal/cyan dashboard icons */
+  --background: oklch(0.145 0.018 260);
+  --foreground: oklch(0.96 0.012 260);
+  --card: oklch(0.19 0.022 262);
+  --card-foreground: oklch(0.96 0.012 260);
+  --popover: oklch(0.19 0.022 262);
+  --popover-foreground: oklch(0.96 0.012 260);
+  --primary: oklch(0.72 0.095 198);
+  --primary-foreground: oklch(0.145 0.035 260);
+  --secondary: oklch(0.24 0.02 262);
+  --secondary-foreground: oklch(0.94 0.01 260);
+  --muted: oklch(0.24 0.018 262);
+  --muted-foreground: oklch(0.66 0.02 260);
+  --accent: oklch(0.26 0.04 270);
+  --accent-foreground: oklch(0.94 0.01 260);
+  --destructive: oklch(0.65 0.18 22);
+  --border: oklch(1 0 0 / 9%);
+  --input: oklch(1 0 0 / 12%);
+  --ring: oklch(0.58 0.06 220);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
@@ -133,18 +134,44 @@
   .agent-screen {
     @apply relative min-h-full;
     background-color: var(--background);
+    /* Subtle washes: violet (structure), teal (primary UI), soft indigo — matches nav/sparkle/book accents */
     background-image:
-      radial-gradient(ellipse 110% 70% at 50% -15%, oklch(0.42 0.16 265 / 0.35), transparent 55%),
-      radial-gradient(ellipse 55% 45% at 100% 10%, oklch(0.38 0.14 195 / 0.18), transparent 50%),
-      radial-gradient(ellipse 50% 40% at 0% 90%, oklch(0.35 0.12 300 / 0.14), transparent 50%);
+      radial-gradient(ellipse 100% 65% at 50% -8%, oklch(0.42 0.1 275 / 0.14), transparent 58%),
+      radial-gradient(ellipse 60% 50% at 95% 5%, oklch(0.4 0.09 200 / 0.1), transparent 52%),
+      radial-gradient(ellipse 55% 45% at 5% 95%, oklch(0.38 0.08 265 / 0.08), transparent 50%);
   }
   .agent-card {
-    @apply border-primary/15 bg-card/85 shadow-xl shadow-black/30 backdrop-blur-md ring-1 ring-white/5;
+    @apply border-white/[0.08] bg-card/90 shadow-lg shadow-black/20 backdrop-blur-md ring-1 ring-white/[0.04];
   }
   .agent-header-bar {
-    @apply border-b border-white/10 bg-card/40 backdrop-blur-xl;
+    @apply border-b border-white/[0.07];
+    background: linear-gradient(
+      180deg,
+      oklch(0.2 0.028 265 / 0.55) 0%,
+      oklch(0.17 0.02 258 / 0.35) 100%
+    );
+    box-shadow: 0 1px 0 oklch(0.55 0.06 200 / 0.08);
+  }
+  .icon-tile-dashboard {
+    border-color: oklch(0.55 0.08 200 / 0.22);
+    background: linear-gradient(
+      145deg,
+      oklch(0.55 0.1 198 / 0.2) 0%,
+      oklch(0.45 0.08 265 / 0.12) 100%
+    );
+    box-shadow:
+      0 0 0 1px oklch(1 0 0 / 0.04) inset,
+      0 4px 20px oklch(0.2 0.06 200 / 0.25);
   }
   .agent-title-gradient {
-    @apply bg-gradient-to-r from-emerald-400 via-cyan-400 to-violet-400 bg-clip-text text-transparent;
+    background-image: linear-gradient(
+      105deg,
+      oklch(0.76 0.09 195) 0%,
+      oklch(0.74 0.06 235) 42%,
+      oklch(0.72 0.08 285) 100%
+    );
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
   }
 }
