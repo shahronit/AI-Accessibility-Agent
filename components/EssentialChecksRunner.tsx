@@ -154,7 +154,7 @@ export function EssentialChecksRunner({ fieldId }: { fieldId: string }) {
     } finally {
       setScanning(false);
     }
-  }, [url, wcagPreset, deepScan, setScanResults]);
+  }, [url, wcagPreset, deepScan, setScanResults, wcagLabel]);
 
   const reset = useCallback(() => {
     if (scanning) return;

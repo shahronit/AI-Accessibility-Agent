@@ -5,7 +5,7 @@
 export function dedupeReportParagraphs(raw: string): string {
   const parts = raw.split(/(```[\s\S]*?```)/g);
   return parts
-    .map((chunk, i) => {
+    .map((chunk) => {
       if (chunk.startsWith("```")) return chunk;
       const paras = chunk.split(/\n\n+/);
       const seen = new Set<string>();

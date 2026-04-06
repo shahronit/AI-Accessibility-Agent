@@ -15,6 +15,7 @@ export default function SettingsPage() {
   const [settings, setSettings] = useState<UserSettings | null>(null);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- client-only settings; avoids hydration mismatch vs SSR
     setSettings(loadUserSettings());
   }, []);
 

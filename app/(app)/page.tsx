@@ -19,6 +19,7 @@ function DashboardContent() {
   }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- sync from localStorage after mount
     refreshHistory();
   }, [refreshHistory]);
 

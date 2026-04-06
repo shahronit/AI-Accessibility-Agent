@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Accessibility testing · Accessibility AI Agent",
+  title: "Accessibility testing · AI Accessibility Agent",
   description:
     "AI testing dashboard, AI report analysis, and generated manual QA scenarios from your scans.",
 };

@@ -52,19 +52,17 @@ export function ResultsList({
   const end = Math.min(start + RESULTS_PAGE_SIZE, filtered.length);
   const pageItems = filtered.slice(start, start + RESULTS_PAGE_SIZE);
 
-  useEffect(() => {
+  const handleFilterChange = (f: ImpactFilter) => {
     setPage(1);
-  }, [filter, issues.length]);
-
-  useEffect(() => {
-    setPage((p) => Math.min(p, totalPages));
-  }, [totalPages]);
+    onFilterChange(f);
+  };
 
   useEffect(() => {
     if (!selected) return;
     const idx = filtered.findIndex((i) => i.index === selected.index);
     if (idx === -1) return;
     const target = Math.floor(idx / RESULTS_PAGE_SIZE) + 1;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- jump to page containing selected issue
     setPage((p) => (p !== target ? target : p));
   }, [selected, filtered]);
 
@@ -84,7 +82,7 @@ export function ResultsList({
         </span>
         <Tabs
           value={filter}
-          onValueChange={(v) => onFilterChange(v as ImpactFilter)}
+          onValueChange={(v) => handleFilterChange(v as ImpactFilter)}
           className="w-full min-w-0 flex-1"
         >
           <TabsList

@@ -40,7 +40,6 @@ On **macOS/Windows**, scans use your **installed Chromium-based browser** (macOS
 - `POST /api/scan` — `{ "url": "https://..." }` → axe violations normalized as issues.
 - `POST /api/ai-explain` — `{ "issue": { ...ScanIssue } }` → `{ explanation, model }`.
 - `POST /api/chat` — `{ "messages": [{role, content}], "scanSummary"?: {...} }` → `{ reply, model }`.
-- `POST /api/jira-mock` — logs a mock ticket payload (demo only).
 
 ## Hydration / voice UI
 
