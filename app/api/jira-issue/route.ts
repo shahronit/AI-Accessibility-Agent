@@ -53,7 +53,9 @@ export async function POST(req: NextRequest) {
     const descriptionText = buildDescriptionText(body);
 
     if (!jiraConfigured()) {
-      console.info("[jira-issue] mock (env not set)", JSON.stringify({ summary, url: body.url }, null, 2));
+      if (process.env.NODE_ENV === "development") {
+        console.info("[jira-issue] mock (env not set)", JSON.stringify({ summary, url: body.url }, null, 2));
+      }
       return NextResponse.json({
         ok: true,
         mock: true,

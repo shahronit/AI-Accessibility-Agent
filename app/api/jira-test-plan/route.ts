@@ -92,20 +92,22 @@ export async function POST(req: NextRequest) {
     const extra = extraFieldsFromEnv();
 
     if (!jiraConfigured()) {
-      console.info(
-        "[jira-test-plan] mock",
-        JSON.stringify(
-          {
-            summary,
-            issueType: issueTypeName,
-            testTool: toolFromBody,
-            cases: cases.length,
-            extraFieldKeys: Object.keys(extra),
-          },
-          null,
-          2,
-        ),
-      );
+      if (process.env.NODE_ENV === "development") {
+        console.info(
+          "[jira-test-plan] mock",
+          JSON.stringify(
+            {
+              summary,
+              issueType: issueTypeName,
+              testTool: toolFromBody,
+              cases: cases.length,
+              extraFieldKeys: Object.keys(extra),
+            },
+            null,
+            2,
+          ),
+        );
+      }
       return NextResponse.json({
         ok: true,
         mock: true,
