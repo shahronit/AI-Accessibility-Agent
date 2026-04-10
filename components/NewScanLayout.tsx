@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
+import { ScanMethodologyPanel } from "@/components/ScanMethodologyPanel";
 import { validateScanUrl } from "@/lib/url";
 import { WCAG_PRESET_OPTIONS, type WcagPresetId } from "@/lib/wcagAxeTags";
 
@@ -106,6 +107,13 @@ export function NewScanLayout({
         </select>
       </div>
 
+      <ScanMethodologyPanel
+        context={{
+          deepScan,
+          voiceAssistantAvailable: Boolean(voiceControl),
+        }}
+      />
+
       <div className="space-y-3 rounded-lg border border-white/[0.07] bg-black/25 p-4">
         <label className="flex cursor-pointer gap-3">
           <input
@@ -118,8 +126,9 @@ export function NewScanLayout({
           <span>
             <span className="text-sm font-medium text-zinc-100">Thorough single-page pass</span>
             <p className="text-muted-foreground mt-1 text-sm leading-relaxed">
-              After the page loads, the tool presses Tab many times so hidden menus and dialogs are more likely to be
-              checked. Still one page only.
+              Rule-based linter plus better DOM coverage: after load, the scanner sends many Tab keypresses so more
+              widgets (menus, dialogs) exist in the DOM before axe runs. Not a screen reader—see the methodology panel
+              above. One page only.
             </p>
           </span>
         </label>

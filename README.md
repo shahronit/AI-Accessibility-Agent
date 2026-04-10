@@ -1,4 +1,4 @@
-# AI Accessibility Agent
+# A11yAgent
 
 Next.js (App Router) workspace that scans public URLs with **axe-core** in **headless Chromium**, explains findings with **Gemini** ([Google AI Studio](https://aistudio.google.com/) free tier), **Claude** (Anthropic), or the **AssemblyAI LLM Gateway**, and includes a **Web Speech API** voice agent plus AI chat.
 
@@ -14,6 +14,14 @@ npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000). The dev script is pinned to **port 3000** (`next dev -p 3000`) so the URL does not jump to 3001 when another process briefly holds the port—if you see “port in use,” stop the other listener and run `npm run dev` again.
+
+## Cursor: accessibility MCP (optional)
+
+This repo includes [`.cursor/mcp.json`](./.cursor/mcp.json) registering **[a11y-mcp-server](https://www.npmjs.com/package/a11y-mcp-server)** (axe-core + Puppeteer via the Model Context Protocol). In **Cursor**, reload the window or restart MCP so agents can call tools such as **`test_accessibility`** (URL scans), **`test_html_string`**, **`get_rules`**, **`check_color_contrast`**, **`check_aria_attributes`**, and **`check_orientation_lock`**.
+
+This improves **AI-assisted development and review** (faster iteration when the agent can run checks itself). It does **not** replace or speed up the in-app `POST /api/scan` pipeline—the web app and MCP server are separate processes.
+
+To run the server standalone (debugging): `npm run mcp:a11y`
 
 ## Environment
 
@@ -68,13 +76,13 @@ The scan endpoint applies basic **SSRF** checks (scheme, blocked hostnames, priv
 
 Anyone can use the app in a browser after you host it—no need for them to install Node or run localhost.
 
-1. Push this repo to GitHub (already done if you use [AI-Accessibility-Agent](https://github.com/shahronit/AI-Accessibility-Agent)).
+1. Push this repo to GitHub (already done if you use [this repository](https://github.com/shahronit/AI-Accessibility-Agent)).
 2. Go to [vercel.com](https://vercel.com), sign in, and click **Add New… → Project**.
 3. **Import** your GitHub repository. Framework Preset should detect **Next.js**; leave the default build command (`next build`) and output.
 4. Under **Environment Variables**, add the same keys you use in `.env.local` (at minimum one LLM key such as `GEMINI_API_KEY`). Copy names and optional values from `.env.example`.
    - **Do not set `PUPPETEER_EXECUTABLE_PATH` on Vercel.** Production runs on Linux; the app uses [`@sparticuz/chromium`](https://github.com/Sparticuz/chromium) automatically when that variable is unset.
    - Add Jira variables only if you want live Jira from the deployed site.
-5. Click **Deploy**. When it finishes, Vercel gives you a **free HTTPS URL** you can share—no domain registration required: `https://<project-name>.vercel.app`. For this repo, if the Vercel **Project Name** is `AI-Accessibility-Agent`, the hostname is usually **`https://ai-accessibility-agent.vercel.app`** (Vercel uses lowercase). Confirm under **Project → Settings → Domains**.
+5. Click **Deploy**. When it finishes, Vercel gives you a **free HTTPS URL** you can share—no domain registration required: `https://<project-name>.vercel.app`. If your Vercel **Project Name** is `a11yagent`, the hostname is usually **`https://a11yagent.vercel.app`** (Vercel uses lowercase). Confirm under **Project → Settings → Domains**.
 
 ### Free “domain” (no purchase)
 
@@ -119,8 +127,8 @@ Each provider below gives you a **free HTTPS hostname** (you only pay if you att
 ### Local Docker check (optional)
 
 ```bash
-docker build -t ai-accessibility-agent .
-docker run --rm -p 3000:3000 -e GEMINI_API_KEY=your_key_here ai-accessibility-agent
+docker build -t a11yagent .
+docker run --rm -p 3000:3000 -e GEMINI_API_KEY=your_key_here a11yagent
 ```
 
 Then open `http://localhost:3000`.

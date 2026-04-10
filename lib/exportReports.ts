@@ -3,6 +3,7 @@
 import { jsPDF } from "jspdf";
 import type { ChatMessage } from "@/lib/aiClient";
 import type { ImpactLevel, ScanIssue } from "@/lib/axeScanner";
+import { APP_NAME } from "@/lib/brand";
 import { isSeparatorRow, isTableRow } from "@/lib/reportMdShared";
 
 export type IssueExportFilter = "all" | ImpactLevel;
@@ -58,7 +59,7 @@ export function exportIssuesPdf(scannedUrl: string, issues: ScanIssue[], filter:
   };
 
   doc.setFontSize(18);
-  addRawLine("Accessibility scan report", { bold: true });
+  addRawLine(`${APP_NAME} — Accessibility scan report`, { bold: true });
   doc.setFontSize(11);
   addRawLine(`URL: ${scannedUrl}`);
   addRawLine(`Filter: ${filterLabel(filter)} (${list.length} issue${list.length === 1 ? "" : "s"})`);

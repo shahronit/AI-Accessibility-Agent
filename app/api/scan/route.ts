@@ -2,12 +2,17 @@ import { NextRequest, NextResponse } from "next/server";
 import path from "node:path";
 import puppeteer from "puppeteer-core";
 import { getPuppeteerLaunchConfig } from "@/lib/browserLaunch";
+import { summarizeChromeAxTree } from "@/lib/chromeAxTreeSummary";
+import { SCAN_ENGINE_INFO } from "@/lib/scanEnginesMeta";
 import { validateScanUrl } from "@/lib/url";
 import { normalizeAxeViolations, summarizeIssues } from "@/lib/axeScanner";
 import { axeTagsForPreset, parseWcagPreset, type WcagPresetId } from "@/lib/wcagAxeTags";
 
 export const maxDuration = 60;
 export const runtime = "nodejs";
+
+/** Cap needs-review rows returned (can be large on noisy pages). */
+const MAX_REVIEW_INSTANCES = 250;
 
 function delay(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
@@ -32,7 +37,7 @@ export async function POST(req: NextRequest) {
       wcagPreset?: unknown;
       deepScan?: unknown;
       requiresLogin?: unknown;
-      /** When true, response includes pass/incomplete rule counts from axe (same run). */
+      /** @deprecated Overview is always returned; kept for older clients. */
       includeAxeOverview?: unknown;
     };
     const rawUrl = typeof body.url === "string" ? body.url : "";
@@ -46,7 +51,6 @@ export async function POST(req: NextRequest) {
     const wcagPreset: WcagPresetId = parseWcagPreset(body.wcagPreset);
     const deepScan = Boolean(body.deepScan);
     const requiresLogin = Boolean(body.requiresLogin);
-    const includeAxeOverview = Boolean(body.includeAxeOverview);
     const tags = axeTagsForPreset(wcagPreset);
 
     browser = await launchBrowser();
@@ -71,7 +75,7 @@ export async function POST(req: NextRequest) {
     await page.addScriptTag({ path: axePath });
 
     const axeOpts: Record<string, unknown> = {
-      resultTypes: includeAxeOverview ? (["violations", "passes", "incomplete"] as const) : (["violations"] as const),
+      resultTypes: ["violations", "passes", "incomplete"] as const,
     };
     if (tags.length > 0) {
       axeOpts.runOnly = { type: "tag", values: tags };
@@ -93,7 +97,7 @@ export async function POST(req: NextRequest) {
       try {
         return await w.axe.run(document, opts as object);
       } catch {
-        return await w.axe.run(document, { resultTypes: ["violations"] });
+        return await w.axe.run(document, { resultTypes: ["violations", "incomplete"] });
       }
     }, axeOpts);
 
@@ -103,24 +107,41 @@ export async function POST(req: NextRequest) {
 
     const passes = (axeRaw as { passes?: import("axe-core").Result[] }).passes;
     const incomplete = (axeRaw as { incomplete?: import("axe-core").Result[] }).incomplete;
-    const axeOverview = includeAxeOverview
-      ? {
-          passRules: Array.isArray(passes) ? passes.length : 0,
-          incompleteRules: Array.isArray(incomplete) ? incomplete.length : 0,
-          incompleteInstances: Array.isArray(incomplete)
-            ? incomplete.reduce((n, r) => n + (r.nodes?.length ?? 0), 0)
-            : 0,
-        }
-      : undefined;
+    const axeOverview = {
+      passRules: Array.isArray(passes) ? passes.length : 0,
+      incompleteRules: Array.isArray(incomplete) ? incomplete.length : 0,
+      incompleteInstances: Array.isArray(incomplete)
+        ? incomplete.reduce((n, r) => n + (r.nodes?.length ?? 0), 0)
+        : 0,
+    };
+
+    const reviewIssuesAll = normalizeAxeViolations(Array.isArray(incomplete) ? incomplete : [], {
+      kind: "needs_review",
+    });
+    const reviewIssues = reviewIssuesAll.slice(0, MAX_REVIEW_INSTANCES);
+
+    let chromeAxSummary: ReturnType<typeof summarizeChromeAxTree> = null;
+    try {
+      const cdp = await page.createCDPSession();
+      await cdp.send("Accessibility.enable");
+      const treeRes = (await cdp.send("Accessibility.getFullAXTree", {})) as { nodes?: unknown };
+      chromeAxSummary = summarizeChromeAxTree(treeRes.nodes);
+    } catch {
+      chromeAxSummary = null;
+    }
 
     return NextResponse.json({
       scannedUrl: targetUrl,
       issues,
+      reviewIssues,
       summary,
       axeOverview,
       meta: {
         violationRules: violations.length,
         issueInstances: issues.length,
+        reviewInstances: reviewIssues.length,
+        reviewInstancesTotal: reviewIssuesAll.length,
+        reviewInstancesCapped: reviewIssuesAll.length > reviewIssues.length,
         wcagPreset,
         deepScan,
         requiresLogin,
@@ -128,6 +149,8 @@ export async function POST(req: NextRequest) {
           ? "Scan ran without your credentials; results may not reflect authenticated views."
           : undefined,
         runOnlyFallback: false,
+        engines: SCAN_ENGINE_INFO,
+        chromeAxSummary,
       },
     });
   } catch (err) {

@@ -3,7 +3,7 @@ import { TESTING_NORMATIVE_BASIS } from "@/lib/testingNorms";
 
 export type TestingAnalysisMode = "pour" | "methods" | "checkpoints" | "comprehensive";
 
-const BASE_AGENT = `You are the Accessibility AI Agent. You receive the **complete** list of automated findings from an axe-core scan (every violation detected for the page—not a single-issue sample). Your job is to analyze **all** findings together in relation to the requested framework. Reference specific rule IDs and issue indices from the data. If many issues share a theme, group them. Do not pretend only one issue exists.
+const BASE_AGENT = `You are **A11yAgent**, an accessibility AI agent. You receive the **complete** list of automated findings from an axe-core scan (every violation detected for the page—not a single-issue sample). Your job is to analyze **all** findings together in relation to the requested framework. Reference specific rule IDs and issue indices from the data. If many issues share a theme, group them. Do not pretend only one issue exists.
 
 ${TESTING_NORMATIVE_BASIS}`;
 

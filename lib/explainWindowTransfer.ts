@@ -25,7 +25,10 @@ export type ExplainWindowPayloadV1 = {
 function isScanIssue(value: unknown): value is ScanIssue {
   if (!value || typeof value !== "object") return false;
   const o = value as Record<string, unknown>;
+  const kindOk =
+    o.kind === undefined || o.kind === "violation" || o.kind === "needs_review";
   return (
+    kindOk &&
     typeof o.index === "number" &&
     typeof o.id === "string" &&
     typeof o.description === "string" &&

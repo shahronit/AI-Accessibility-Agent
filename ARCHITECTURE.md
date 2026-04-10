@@ -1,4 +1,4 @@
-# AI Accessibility Agent — Architecture
+# A11yAgent — Architecture
 
 This document describes how the application is structured, how data flows, and which external systems it depends on. It is aimed at developers onboarding to the codebase or planning deployments.
 
@@ -6,7 +6,7 @@ This document describes how the application is structured, how data flows, and w
 
 ## 1. Summary
 
-**AI Accessibility Agent** is a **Next.js 16 (App Router)** application. The **browser** runs a React UI with client-side state for the current scan. **Server Route Handlers** (`app/api/*/route.ts`) perform heavy work: headless **Chromium** loads target URLs, **axe-core** collects accessibility violations, and **LLM APIs** produce explanations, chat, and testing-hub reports. Optional **Jira Cloud REST** integration creates issues from the UI.
+**A11yAgent** is a **Next.js 16 (App Router)** application. The **browser** runs a React UI with client-side state for the current scan. **Server Route Handlers** (`app/api/*/route.ts`) perform heavy work: headless **Chromium** loads target URLs, **axe-core** collects accessibility violations, and **LLM APIs** produce explanations, chat, and testing-hub reports. Optional **Jira Cloud REST** integration creates issues from the UI.
 
 **Persistence on the device:** scan history and user display settings live in **`localStorage`** (not a central database). **Secrets** (API keys) live in **environment variables** on the server (e.g. `.env.local` locally, Vercel/Render env in production).
 

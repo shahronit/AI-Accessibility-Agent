@@ -88,15 +88,21 @@ export function TestingAgentRunner({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url: v.url }),
       });
-      const data = (await res.json()) as { error?: string; issues?: ScanIssue[]; scannedUrl?: string };
+      const data = (await res.json()) as {
+        error?: string;
+        issues?: ScanIssue[];
+        reviewIssues?: ScanIssue[];
+        scannedUrl?: string;
+      };
       if (!res.ok) {
         throw new Error(data.error || "Scan failed");
       }
       list = data.issues ?? [];
+      const reviewList = data.reviewIssues ?? [];
       finalUrl = data.scannedUrl ?? v.url;
       setLocalIssues(list);
       setLocalScannedUrl(finalUrl);
-      setScanResults(finalUrl, list);
+      setScanResults(finalUrl, list, reviewList);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Scan failed";
       setScanError(msg);

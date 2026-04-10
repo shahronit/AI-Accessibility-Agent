@@ -30,9 +30,6 @@ function read(): UserSettings {
 
 function write(next: UserSettings) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-  if (typeof document !== "undefined") {
-    document.documentElement.classList.toggle("a11y-pref-reduced-motion", next.preferReducedMotion);
-  }
   if (typeof window !== "undefined") {
     window.dispatchEvent(new CustomEvent("a11y-user-settings-changed"));
   }

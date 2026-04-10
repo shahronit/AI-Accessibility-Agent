@@ -15,7 +15,15 @@ export type HistoryEntry = {
   incompleteInstances?: number;
   /** Trimmed snapshot for quick restore */
   issuesSample?: Pick<ScanIssue, "id" | "impact" | "description">[];
+  /** Capped full findings for dashboard report (see MAX_ISSUES_IN_HISTORY). */
+  issues?: ScanIssue[];
+  /** axe incomplete / needs-review instances (capped). */
+  reviewIssues?: ScanIssue[];
+  totalReviewIssues?: number;
 };
+
+/** Max issues stored in history for the /report view (localStorage size). */
+export const MAX_ISSUES_IN_HISTORY = 50;
 
 function readAll(): HistoryEntry[] {
   if (typeof window === "undefined") return [];
@@ -67,4 +75,11 @@ export function dashboardScanUrlKey(href: string): string {
   } catch {
     return t.replace(/\/$/, "").toLowerCase();
   }
+}
+
+/** Latest saved entry for the same page URL (normalized), or undefined. */
+export function findLatestHistoryForUrl(href: string): HistoryEntry | undefined {
+  const key = dashboardScanUrlKey(href);
+  if (!key) return undefined;
+  return loadScanHistory().find((e) => dashboardScanUrlKey(e.scannedUrl) === key);
 }

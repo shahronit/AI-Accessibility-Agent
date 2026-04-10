@@ -38,7 +38,7 @@ function DashboardContent() {
         pendingScanUrl={scanActivity.pendingUrl ?? ""}
         issues={issues}
         onNewScanClick={() => router.push("/scan")}
-        onViewResults={(url) => router.push(`/scan?url=${encodeURIComponent(url)}`)}
+        onViewResults={(url) => router.push(`/report?url=${encodeURIComponent(url)}`)}
       />
     </div>
   );

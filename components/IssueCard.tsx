@@ -79,6 +79,14 @@ export function IssueCard({
             <ImpactIcon className="size-3.5" aria-hidden />
             {issue.impact}
           </Badge>
+          {issue.kind === "needs_review" ? (
+            <Badge
+              variant="outline"
+              className="border-amber-500/45 bg-amber-500/10 text-amber-100"
+            >
+              Needs review
+            </Badge>
+          ) : null}
           <span className="text-primary/90 font-mono text-sm tracking-tight">{issue.id}</span>
         </div>
         <div className="flex flex-wrap items-center gap-1.5">

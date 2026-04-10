@@ -19,7 +19,9 @@ export type ScanActivity = {
 export type ScanSessionState = {
   scannedUrl: string | null;
   issues: ScanIssue[];
-  setScanResults: (url: string, list: ScanIssue[]) => void;
+  /** axe “incomplete” — needs manual review */
+  reviewIssues: ScanIssue[];
+  setScanResults: (url: string, list: ScanIssue[], reviewList?: ScanIssue[]) => void;
   clearScan: () => void;
   scanActivity: ScanActivity;
   setScanActivity: (next: Partial<ScanActivity>) => void;
@@ -30,19 +32,22 @@ const ScanSessionContext = createContext<ScanSessionState | null>(null);
 export function ScanSessionProvider({ children }: { children: ReactNode }) {
   const [scannedUrl, setScannedUrl] = useState<string | null>(null);
   const [issues, setIssues] = useState<ScanIssue[]>([]);
+  const [reviewIssues, setReviewIssues] = useState<ScanIssue[]>([]);
   const [scanActivity, setScanActivityState] = useState<ScanActivity>({
     inProgress: false,
     pendingUrl: null,
   });
 
-  const setScanResults = useCallback((url: string, list: ScanIssue[]) => {
+  const setScanResults = useCallback((url: string, list: ScanIssue[], reviewList?: ScanIssue[]) => {
     setScannedUrl(url);
     setIssues(list);
+    setReviewIssues(reviewList ?? []);
   }, []);
 
   const clearScan = useCallback(() => {
     setScannedUrl(null);
     setIssues([]);
+    setReviewIssues([]);
   }, []);
 
   const setScanActivity = useCallback((next: Partial<ScanActivity>) => {
@@ -53,12 +58,13 @@ export function ScanSessionProvider({ children }: { children: ReactNode }) {
     (): ScanSessionState => ({
       scannedUrl,
       issues,
+      reviewIssues,
       setScanResults,
       clearScan,
       scanActivity,
       setScanActivity,
     }),
-    [scannedUrl, issues, setScanResults, clearScan, scanActivity, setScanActivity],
+    [scannedUrl, issues, reviewIssues, setScanResults, clearScan, scanActivity, setScanActivity],
   );
 
   return <ScanSessionContext.Provider value={value}>{children}</ScanSessionContext.Provider>;

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { APP_DESCRIPTION, APP_NAME, APP_TITLE_DEFAULT } from "@/lib/brand";
 import { Providers } from "./providers";
 import "./globals.css";
 
@@ -14,9 +15,11 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "AI Accessibility Agent",
-  description:
-    "Your AI agent for WCAG-aligned accessibility scans, voice control, structured explanations, and chat.",
+  title: {
+    default: APP_TITLE_DEFAULT,
+    template: `%s · ${APP_NAME}`,
+  },
+  description: APP_DESCRIPTION,
 };
 
 export default function RootLayout({

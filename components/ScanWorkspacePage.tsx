@@ -17,16 +17,19 @@ import {
 } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { NewScanLayout, type NewScanOptions } from "@/components/NewScanLayout";
 import { ScanInProgressPanel, type ScanLogLine } from "@/components/ScanInProgressPanel";
 import { WhatWeTestPanel } from "@/components/WhatWeTestPanel";
 import { ResultsList, RESULTS_PAGE_SIZE, type ImpactFilter } from "@/components/ResultsList";
 import { useScanSession } from "@/components/ScanSessionProvider";
-import { summarizeIssues, type ScanIssue } from "@/lib/axeScanner";
+import { summarizeIssues, type AxeOverviewStats, type ScanIssue } from "@/lib/axeScanner";
+import { scanRuntimeStageMessages } from "@/lib/scanRuntimeStages";
 import { exportIssuesCsv, exportIssuesPdf } from "@/lib/exportReports";
 import { openScanExplainTab, writeExplainWindowPayload } from "@/lib/explainWindowTransfer";
-import { saveScanToHistory } from "@/lib/scanHistory";
-import { validateScanUrl } from "@/lib/url";
+import { MAX_ISSUES_IN_HISTORY, saveScanToHistory } from "@/lib/scanHistory";
+import { formatUrlForScanLog, validateScanUrl } from "@/lib/url";
+import { APP_NAME } from "@/lib/brand";
 import {
   buildScanSummarySpeech,
   speakText,
@@ -65,13 +68,14 @@ type ScanSummary = {
 
 export default function ScanWorkspacePage() {
   const searchParams = useSearchParams();
-  const { scannedUrl, issues, setScanResults, clearScan, setScanActivity } = useScanSession();
+  const { scannedUrl, issues, reviewIssues, setScanResults, clearScan, setScanActivity } = useScanSession();
   const [url, setUrl] = useState("");
   const [scanLoading, setScanLoading] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
 
   const [filter, setFilter] = useState<ImpactFilter>("all");
   const [selected, setSelected] = useState<ScanIssue | null>(null);
+  const [findingsTab, setFindingsTab] = useState<"violations" | "review">("violations");
 
   const [voiceStatus, setVoiceStatus] = useState("");
   const [ttsSpeaking, setTtsSpeaking] = useState(false);
@@ -88,20 +92,30 @@ export default function ScanWorkspacePage() {
   const [showZeroViolationsBanner, setShowZeroViolationsBanner] = useState(false);
 
   const scanSummary: ScanSummary | null = useMemo(() => {
-    if (!scannedUrl || issues.length === 0) return null;
-    const s = summarizeIssues(issues);
+    if (!scannedUrl) return null;
+    const primary = issues.length > 0 ? issues : reviewIssues;
+    if (primary.length === 0) return null;
+    const s = summarizeIssues(primary);
     return {
       scannedUrl,
       total: s.total,
       byImpact: s.byImpact as Record<string, number>,
       topRules: s.topRules,
     };
-  }, [scannedUrl, issues]);
+  }, [scannedUrl, issues, reviewIssues]);
+
+  const activeIssues = findingsTab === "violations" ? issues : reviewIssues;
 
   const filteredIssueCount = useMemo(() => {
-    if (filter === "all") return issues.length;
-    return issues.filter((i) => i.impact === filter).length;
-  }, [issues, filter]);
+    if (filter === "all") return activeIssues.length;
+    return activeIssues.filter((i) => i.impact === filter).length;
+  }, [activeIssues, filter]);
+
+  useEffect(() => {
+    if (!selected) return;
+    const stillHere = activeIssues.some((i) => i.index === selected.index);
+    if (!stillHere) setSelected(null);
+  }, [activeIssues, selected]);
 
   const filterExportSubtitle = useMemo(() => {
     if (filter === "all") return "All severities";
@@ -174,11 +188,18 @@ export default function ScanWorkspacePage() {
       scanGenerationRef.current += 1;
       const generation = scanGenerationRef.current;
 
-      const t = scanLogTime();
-      setScanLogLines([
-        { id: "log-wait", text: "⏳ Waiting for server response..." },
-        { id: "log-conn", text: `${t} Connected to scan progress...` },
-      ]);
+      const stages = scanRuntimeStageMessages(o.deepScan, v.url);
+      const t0 = scanLogTime();
+      setScanLogLines([{ id: "log-0", text: `${t0} ${stages[0] ?? `${formatUrlForScanLog(v.url)} — Starting…`}` }]);
+      let stageStep = 1;
+      let progressInterval: number | null = null;
+      progressInterval = window.setInterval(() => {
+        if (stageStep >= stages.length) return;
+        const ts = scanLogTime();
+        const line = stages[stageStep];
+        setScanLogLines((prev) => [...prev, { id: `log-s-${stageStep}-${Date.now()}`, text: `${ts} ${line}` }]);
+        stageStep += 1;
+      }, 950);
 
       setAwaitingRevealAfterScan(false);
       setShowZeroViolationsBanner(false);
@@ -198,7 +219,6 @@ export default function ScanWorkspacePage() {
             wcagPreset: o.wcagPreset,
             deepScan: o.deepScan,
             requiresLogin: o.requiresLogin,
-            includeAxeOverview: false,
           }),
           signal: ac.signal,
         });
@@ -208,7 +228,13 @@ export default function ScanWorkspacePage() {
         const data = (await res.json()) as {
           error?: string;
           issues?: ScanIssue[];
+          reviewIssues?: ScanIssue[];
           scannedUrl?: string;
+          axeOverview?: AxeOverviewStats;
+          meta?: {
+            chromeAxSummary?: { nonIgnoredCount: number; topRoles: { role: string; count: number }[] };
+            reviewInstancesCapped?: boolean;
+          };
         };
         if (scanGenerationRef.current !== generation) {
           return;
@@ -220,22 +246,42 @@ export default function ScanWorkspacePage() {
           return;
         }
         const list = data.issues ?? [];
+        const reviewList = data.reviewIssues ?? [];
         const finalUrl = data.scannedUrl ?? v.url;
+        const meta = data.meta;
+        const urlLabel = formatUrlForScanLog(finalUrl, 80);
+        const axNodes = meta?.chromeAxSummary?.nonIgnoredCount;
+        const axPart =
+          typeof axNodes === "number" ? ` Accessibility tree: ${axNodes} nodes (non-ignored).` : "";
+        const cappedNote = meta?.reviewInstancesCapped ? " Needs-review list truncated on server." : "";
         setScanLogLines((prev) => [
           ...prev,
           {
             id: `log-done-${Date.now()}`,
-            text: `${scanLogTime()} Scan complete — ${list.length} violation${list.length === 1 ? "" : "s"}.`,
+            text: `${scanLogTime()} ${urlLabel} — Finished.${axPart} Violations: ${list.length}. Needs review: ${reviewList.length}.${cappedNote}`,
           },
         ]);
-        setScanResults(finalUrl, list);
+        setScanResults(finalUrl, list, reviewList);
+        if (list.length === 0 && reviewList.length > 0) {
+          setFindingsTab("review");
+        } else {
+          setFindingsTab("violations");
+        }
         setAwaitingRevealAfterScan(true);
-        setVoiceStatus(`Scan complete. Found ${list.length} issues.`);
+        setVoiceStatus(
+          `Scan complete. ${list.length} violation${list.length === 1 ? "" : "s"}, ${reviewList.length} needs review.`,
+        );
         const s = summarizeIssues(list);
+        const incompleteN =
+          data.axeOverview?.incompleteInstances ?? data.axeOverview?.incompleteRules ?? reviewList.length;
         saveScanToHistory({
           scannedUrl: data.scannedUrl ?? v.url,
           totalIssues: list.length,
           byImpact: s.byImpact as Record<string, number>,
+          incompleteInstances: incompleteN,
+          issues: list.slice(0, MAX_ISSUES_IN_HISTORY),
+          reviewIssues: reviewList.slice(0, MAX_ISSUES_IN_HISTORY),
+          totalReviewIssues: reviewList.length,
           issuesSample: list.slice(0, 20).map((i) => ({
             id: i.id,
             impact: i.impact,
@@ -265,6 +311,7 @@ export default function ScanWorkspacePage() {
           setVoiceStatus(msg);
         }
       } finally {
+        if (progressInterval) window.clearInterval(progressInterval);
         if (scanAbortRef.current === ac) {
           scanAbortRef.current = null;
         }
@@ -279,8 +326,8 @@ export default function ScanWorkspacePage() {
 
   const revealFindings = useCallback(() => {
     setAwaitingRevealAfterScan(false);
-    setShowZeroViolationsBanner(issues.length === 0);
-  }, [issues.length]);
+    setShowZeroViolationsBanner(issues.length === 0 && reviewIssues.length === 0);
+  }, [issues.length, reviewIssues.length]);
 
   const handleReset = useCallback(() => {
     scanGenerationRef.current += 1;
@@ -297,6 +344,7 @@ export default function ScanWorkspacePage() {
     setScanActivity({ inProgress: false, pendingUrl: null });
     setScanError(null);
     setFilter("all");
+    setFindingsTab("violations");
     setSelected(null);
     setVoiceStatus("Session reset.");
     setExplainWindowOpeningIndex(null);
@@ -349,7 +397,8 @@ export default function ScanWorkspacePage() {
         return;
       }
       if (cmd.type === "explain_issue") {
-        const issue = issues.find((i) => i.index === cmd.index);
+        const issue =
+          issues.find((i) => i.index === cmd.index) ?? reviewIssues.find((i) => i.index === cmd.index);
         if (!issue) {
           setVoiceStatus(`No issue number ${cmd.index}.`);
           return;
@@ -366,7 +415,7 @@ export default function ScanWorkspacePage() {
         return;
       }
       if (cmd.type === "chat_explain_scan") {
-        if (!scannedUrl || issues.length === 0 || !scanSummary) {
+        if (!scannedUrl || (issues.length === 0 && reviewIssues.length === 0) || !scanSummary) {
           setVoiceStatus("Run a scan first, then ask to explain the issues.");
           return;
         }
@@ -387,11 +436,12 @@ export default function ScanWorkspacePage() {
         return;
       }
       if (cmd.type === "speak_scan_summary") {
-        if (!scannedUrl || issues.length === 0) {
+        if (!scannedUrl || (issues.length === 0 && reviewIssues.length === 0)) {
           setVoiceStatus("No results to read. Run a scan first.");
           return;
         }
-        const s = summarizeIssues(issues);
+        const primary = issues.length > 0 ? issues : reviewIssues;
+        const s = summarizeIssues(primary);
         speakWithTracking(
           buildScanSummarySpeech({
             scannedUrl: scannedUrl ?? undefined,
@@ -405,7 +455,7 @@ export default function ScanWorkspacePage() {
       }
       setVoiceStatus("Command not recognized. Try scan, explain issue 1, explain the issues, or read the results.");
     },
-    [issues, openExplainInNewWindow, runScan, scannedUrl, scanSummary, selected, speakWithTracking],
+    [issues, reviewIssues, openExplainInNewWindow, runScan, scannedUrl, scanSummary, selected, speakWithTracking],
   );
 
   const reportToJira = useCallback(
@@ -457,6 +507,8 @@ export default function ScanWorkspacePage() {
     },
     [scannedUrl],
   );
+
+  const hasRevealableFindings = issues.length > 0 || reviewIssues.length > 0;
 
   return (
     <div className="text-sm leading-relaxed text-zinc-300">
@@ -537,28 +589,45 @@ export default function ScanWorkspacePage() {
                       ) : awaitingRevealAfterScan ? (
                         <p className="text-muted-foreground mt-1 text-sm">
                           Summary:{" "}
-                          <span className="font-medium text-zinc-300 tabular-nums">{issues.length}</span> violations ·
-                          click{" "}
+                          <span className="font-medium text-zinc-300 tabular-nums">{issues.length}</span> violations ·{" "}
+                          <span className="font-medium text-amber-200/90 tabular-nums">{reviewIssues.length}</span>{" "}
+                          needs review · click{" "}
                           <span className="text-zinc-200">Show results</span> for the full list ·{" "}
                           <Link href="/testing/ai-report" className="text-primary underline-offset-2 hover:underline">
                             AI report Analysis
                           </Link>
                         </p>
-                      ) : issues.length > 0 ? (
-                        <p className="text-muted-foreground mt-1 text-sm">
-                          <span className="font-medium text-zinc-400">{filterExportSubtitle}</span> ·{" "}
-                          {filteredIssueCount} in exports
-                          {filteredIssueCount > RESULTS_PAGE_SIZE ? (
-                            <>
-                              {" "}
-                              · <span className="text-zinc-400">{RESULTS_PAGE_SIZE} per page</span>
-                            </>
-                          ) : null}{" "}
-                          ·{" "}
-                          <Link href="/testing/ai-report" className="text-primary underline-offset-2 hover:underline">
-                            AI report Analysis
-                          </Link>
-                        </p>
+                      ) : hasRevealableFindings ? (
+                        <>
+                          <p className="text-foreground/95 mt-1 text-sm leading-relaxed">
+                            <span className="tabular-nums font-semibold text-zinc-200">{issues.length}</span>{" "}
+                            violations ·{" "}
+                            <span className="tabular-nums font-semibold text-amber-200/90">{reviewIssues.length}</span>{" "}
+                            needs review
+                            {scannedUrl ? (
+                              <>
+                                {" "}
+                                <span className="text-muted-foreground">·</span>{" "}
+                                <span className="break-all font-mono text-xs text-zinc-400">{scannedUrl}</span>
+                              </>
+                            ) : null}
+                          </p>
+                          <p className="text-muted-foreground mt-1 text-sm">
+                            <span className="font-medium text-zinc-400">{filterExportSubtitle}</span> ·{" "}
+                            {findingsTab === "violations" ? "Violations" : "Needs review"} tab · {filteredIssueCount} in
+                            exports
+                            {filteredIssueCount > RESULTS_PAGE_SIZE ? (
+                              <>
+                                {" "}
+                                · <span className="text-zinc-400">{RESULTS_PAGE_SIZE} per page</span>
+                              </>
+                            ) : null}{" "}
+                            ·{" "}
+                            <Link href="/testing/ai-report" className="text-primary underline-offset-2 hover:underline">
+                              AI report Analysis
+                            </Link>
+                          </p>
+                        </>
                       ) : showZeroViolationsBanner ? (
                         <p className="text-muted-foreground mt-1 text-sm">
                           The last scan didn&apos;t flag issues for this page with your current settings. Try another URL
@@ -577,12 +646,12 @@ export default function ScanWorkspacePage() {
                       className="gap-1.5 border-white/10 bg-black/30 text-sm"
                       disabled={
                         !scannedUrl ||
-                        issues.length === 0 ||
+                        activeIssues.length === 0 ||
                         filteredIssueCount === 0 ||
                         scanLoading ||
                         awaitingRevealAfterScan
                       }
-                      onClick={() => scannedUrl && exportIssuesPdf(scannedUrl, issues, filter)}
+                      onClick={() => scannedUrl && exportIssuesPdf(scannedUrl, activeIssues, filter)}
                     >
                       <FileDown className="size-4 shrink-0" aria-hidden />
                       PDF
@@ -594,12 +663,12 @@ export default function ScanWorkspacePage() {
                       className="gap-1.5 border-white/10 bg-black/30 text-sm"
                       disabled={
                         !scannedUrl ||
-                        issues.length === 0 ||
+                        activeIssues.length === 0 ||
                         filteredIssueCount === 0 ||
                         scanLoading ||
                         awaitingRevealAfterScan
                       }
-                      onClick={() => scannedUrl && exportIssuesCsv(scannedUrl, issues, filter)}
+                      onClick={() => scannedUrl && exportIssuesCsv(scannedUrl, activeIssues, filter)}
                     >
                       <FileSpreadsheet className="size-4 shrink-0" aria-hidden />
                       CSV
@@ -627,6 +696,7 @@ export default function ScanWorkspacePage() {
                     phase="scanning"
                     pagesLabel="1/1"
                     violationsCount={0}
+                    needsReviewCount={0}
                     logLines={scanLogLines}
                     onCancel={cancelScan}
                   />
@@ -635,24 +705,72 @@ export default function ScanWorkspacePage() {
                     phase="summary"
                     pagesLabel="1/1"
                     violationsCount={issues.length}
+                    needsReviewCount={reviewIssues.length}
                     logLines={scanLogLines}
                     onCancel={cancelScan}
                     onShowResults={revealFindings}
                   />
-                ) : issues.length > 0 ? (
-                  <ResultsList
-                    key={scannedUrl ?? "no-url"}
-                    issues={issues}
-                    filter={filter}
-                    onFilterChange={setFilter}
-                    selected={selected}
-                    onSelect={setSelected}
-                    onExplain={(issue) => openExplainInNewWindow(issue)}
-                    explainingId={explainWindowOpeningIndex}
-                    onReportJira={(issue) => void reportToJira(issue)}
-                    jiraLoading={jiraLoading}
-                    embedded
-                  />
+                ) : hasRevealableFindings ? (
+                  <Tabs
+                    value={findingsTab}
+                    onValueChange={(v) => setFindingsTab(v as "violations" | "review")}
+                    className="w-full min-w-0"
+                  >
+                    <TabsList
+                      className="flex h-auto w-full flex-wrap justify-start gap-1 bg-muted/30"
+                      aria-label="Findings type"
+                    >
+                      <TabsTrigger value="violations" className="tabular-nums">
+                        Violations ({issues.length})
+                      </TabsTrigger>
+                      <TabsTrigger value="review" className="tabular-nums">
+                        Needs review ({reviewIssues.length})
+                      </TabsTrigger>
+                    </TabsList>
+                    <TabsContent value="violations" className="mt-3 outline-none" tabIndex={-1}>
+                      {issues.length === 0 ? (
+                        <p className="text-muted-foreground rounded-lg border border-white/[0.06] bg-black/20 px-4 py-10 text-center text-sm leading-relaxed">
+                          No violations for this run. Open the <strong className="text-zinc-300">Needs review</strong> tab
+                          for axe &quot;incomplete&quot; items that need manual confirmation.
+                        </p>
+                      ) : (
+                        <ResultsList
+                          key={`${scannedUrl ?? "no-url"}-v`}
+                          issues={issues}
+                          filter={filter}
+                          onFilterChange={setFilter}
+                          selected={selected}
+                          onSelect={setSelected}
+                          onExplain={(issue) => openExplainInNewWindow(issue)}
+                          explainingId={explainWindowOpeningIndex}
+                          onReportJira={(issue) => void reportToJira(issue)}
+                          jiraLoading={jiraLoading}
+                          embedded
+                        />
+                      )}
+                    </TabsContent>
+                    <TabsContent value="review" className="mt-3 outline-none" tabIndex={-1}>
+                      {reviewIssues.length === 0 ? (
+                        <p className="text-muted-foreground rounded-lg border border-white/[0.06] bg-black/20 px-4 py-10 text-center text-sm leading-relaxed">
+                          No needs-review items — axe did not return incomplete results for this page with your preset.
+                        </p>
+                      ) : (
+                        <ResultsList
+                          key={`${scannedUrl ?? "no-url"}-r`}
+                          issues={reviewIssues}
+                          filter={filter}
+                          onFilterChange={setFilter}
+                          selected={selected}
+                          onSelect={setSelected}
+                          onExplain={(issue) => openExplainInNewWindow(issue)}
+                          explainingId={explainWindowOpeningIndex}
+                          onReportJira={(issue) => void reportToJira(issue)}
+                          jiraLoading={jiraLoading}
+                          embedded
+                        />
+                      )}
+                    </TabsContent>
+                  </Tabs>
                 ) : showZeroViolationsBanner ? (
                   <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-emerald-500/25 bg-emerald-950/20 py-14 text-center">
                     <ListChecks className="size-10 text-emerald-400/90" aria-hidden />
@@ -684,7 +802,7 @@ export default function ScanWorkspacePage() {
         <p className="mx-auto flex max-w-2xl flex-wrap items-center justify-center gap-2">
           <Bot className="text-primary size-4 shrink-0" aria-hidden />
           <span>
-            <strong className="text-foreground">AI Accessibility Agent</strong> · Voice uses the Web Speech API · Scans
+            <strong className="text-foreground">{APP_NAME}</strong> · Voice uses the Web Speech API · Scans
             use headless Chromium on the server.
           </span>
         </p>

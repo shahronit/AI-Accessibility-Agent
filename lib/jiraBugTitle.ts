@@ -14,7 +14,8 @@ export function jiraBugReportTitle(issue: ScanIssue, scannedUrl: string): string
   const path = pagePathFromScannedUrl(scannedUrl);
   const sev = issue.impact.toUpperCase();
   const line = issue.description.replace(/\s+/g, " ").trim();
-  return `[Accessibility] [${sev}] ${line} — ${path}`;
+  const prefix = issue.kind === "needs_review" ? "[Needs review] " : "";
+  return `${prefix}[Accessibility] [${sev}] ${line} — ${path}`;
 }
 
 export function allJiraBugTitles(issues: ScanIssue[], scannedUrl: string): string {

@@ -1,12 +1,13 @@
 {
-  "name": "ai-accessibility-agent",
+  "name": "a11yagent",
   "version": "0.1.0",
   "private": true,
   "scripts": {
     "dev": "kill-port 3000 && next dev -p 3000",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "mcp:a11y": "npx -y a11y-mcp-server"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.82.0",

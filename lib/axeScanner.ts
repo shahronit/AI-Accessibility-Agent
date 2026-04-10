@@ -2,6 +2,9 @@ import type { Result, NodeResult } from "axe-core";
 
 export type ImpactLevel = "critical" | "serious" | "moderate" | "minor";
 
+/** Violation vs axe “incomplete” (manual review) */
+export type ScanIssueKind = "violation" | "needs_review";
+
 /** Returned when POST /api/scan includes includeAxeOverview: true */
 export type AxeOverviewStats = {
   passRules: number;
@@ -24,6 +27,8 @@ export interface ScanIssue {
   id: string;
   description: string;
   impact: ImpactLevel;
+  /** Violation (default) or axe incomplete / needs manual review */
+  kind?: ScanIssueKind;
   html: string;
   helpUrl: string;
   failureSummary?: string;
@@ -48,13 +53,14 @@ function truncateHtml(html: string, max = 2000): string {
 }
 
 /**
- * Flatten axe violations to one record per failing node for UI and AI context.
+ * Flatten axe violations or incomplete results to one record per node for UI and AI context.
  */
 export function normalizeAxeViolations(
   violations: Result[],
-  options?: { sourceUrl?: string },
+  options?: { sourceUrl?: string; kind?: ScanIssueKind },
 ): ScanIssue[] {
   const sourceUrl = options?.sourceUrl;
+  const kind: ScanIssueKind = options?.kind ?? "violation";
   const issues: ScanIssue[] = [];
   let index = 1;
 
@@ -66,6 +72,7 @@ export function normalizeAxeViolations(
         id: v.id,
         description: v.help || v.description,
         impact: mapImpact(v.impact),
+        ...(kind !== "violation" ? { kind } : {}),
         html: "",
         helpUrl: v.helpUrl,
         failureSummary: v.description,
@@ -80,6 +87,7 @@ export function normalizeAxeViolations(
         id: v.id,
         description: v.help || v.description,
         impact: mapImpact(v.impact),
+        ...(kind !== "violation" ? { kind } : {}),
         html: truncateHtml(node.html || ""),
         helpUrl: v.helpUrl,
         failureSummary: node.failureSummary || v.description,

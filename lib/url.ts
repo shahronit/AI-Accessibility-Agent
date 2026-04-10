@@ -91,3 +91,20 @@ export function validateScanUrl(raw: string): UrlValidationResult {
 
   return { ok: true, url: parsed.toString(), parsed };
 }
+
+/**
+ * Compact host + path (+ search) for in-app scan progress logs.
+ */
+export function formatUrlForScanLog(href: string, maxLen = 72): string {
+  try {
+    const u = new URL(href);
+    const path = u.pathname === "/" ? "" : u.pathname;
+    const out = `${u.hostname}${path}${u.search || ""}`;
+    if (out.length <= maxLen) return out;
+    return `${out.slice(0, Math.max(8, maxLen - 1))}…`;
+  } catch {
+    const t = href.trim();
+    if (t.length <= maxLen) return t;
+    return `${t.slice(0, Math.max(8, maxLen - 1))}…`;
+  }
+}

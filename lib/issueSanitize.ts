@@ -7,6 +7,7 @@ export function sanitizeIssueForApi(issue: ScanIssue): ScanIssue {
     id: issue.id,
     description: issue.description,
     impact: issue.impact,
+    ...(issue.kind ? { kind: issue.kind } : {}),
     html: issue.html.slice(0, 16_000),
     helpUrl: issue.helpUrl,
     failureSummary: issue.failureSummary?.slice(0, 4000),

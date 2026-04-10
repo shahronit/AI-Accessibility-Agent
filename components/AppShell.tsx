@@ -13,8 +13,10 @@ import {
   PanelLeftOpen,
   ScanSearch,
   Settings,
-  Sparkles,
 } from "lucide-react";
+import { A11yAmbience } from "@/components/A11yAmbience";
+import { AppLogo } from "@/components/AppLogo";
+import { APP_NAME, APP_TAGLINE } from "@/lib/brand";
 import { cn } from "@/lib/utils";
 import { loadUserSettings } from "@/lib/userSettings";
 
@@ -22,6 +24,7 @@ function pageTitle(pathname: string): string {
   if (pathname.startsWith("/history")) return "Scan history";
   if (pathname.startsWith("/settings")) return "Settings";
   if (pathname.startsWith("/scan/explain")) return "Issue explanation";
+  if (pathname.startsWith("/report")) return "Scan findings report";
   if (pathname.startsWith("/scan")) return "New scan";
   if (pathname === "/testing/ai-report") return "AI report Analysis";
   if (pathname === "/testing/scenarios" || pathname.startsWith("/testing/scenarios/")) {
@@ -93,20 +96,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   const navLinkClass = (active: boolean, compact: boolean) =>
     cn(
-      "flex items-center rounded-lg text-sm font-medium transition-colors",
+      "app-nav-link flex items-center rounded-lg text-sm font-medium transition-colors",
       compact ? "justify-center px-2 py-2.5" : "gap-3 px-3 py-2.5",
       active
-        ? "bg-emerald-500/20 text-emerald-300"
-        : "text-muted-foreground hover:bg-white/5 hover:text-foreground",
+        ? "bg-emerald-500/25 text-emerald-200 shadow-[0_0_20px_oklch(0.55_0.12_160/0.12)]"
+        : "text-muted-foreground hover:bg-white/[0.06] hover:text-foreground",
     );
 
   const testingLinkClass = (active: boolean, compact: boolean) =>
     cn(
-      "flex items-center rounded-lg text-sm font-medium transition-colors",
+      "app-nav-link flex items-center rounded-lg text-sm font-medium transition-colors",
       compact ? "justify-center px-2 py-2" : "gap-3 px-3 py-2",
       active
-        ? "bg-emerald-500/20 text-emerald-300"
-        : "text-muted-foreground hover:bg-white/5 hover:text-foreground",
+        ? "bg-emerald-500/25 text-emerald-200 shadow-[0_0_20px_oklch(0.55_0.12_160/0.12)]"
+        : "text-muted-foreground hover:bg-white/[0.06] hover:text-foreground",
     );
 
   return (
@@ -120,7 +123,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <aside
         id="app-sidebar"
         className={cn(
-          "border-border/60 bg-card/90 flex shrink-0 flex-col overflow-x-hidden border-r backdrop-blur-md transition-[width] duration-200 ease-out",
+          "border-border/60 bg-card/80 flex shrink-0 flex-col overflow-x-hidden border-r backdrop-blur-xl transition-[width] duration-200 ease-out",
           sidebarCollapsed ? "w-[4.5rem]" : "w-[min(100%,288px)]",
         )}
         aria-label="Application"
@@ -131,13 +134,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             sidebarCollapsed ? "justify-center px-2" : "gap-3 px-4",
           )}
         >
-          <div className="bg-primary/15 text-primary flex size-10 shrink-0 items-center justify-center rounded-xl">
-            <Sparkles className="size-5 text-amber-400/90" aria-hidden />
+          <div className="app-brand-glow relative shrink-0 overflow-hidden rounded-xl ring-1 ring-white/15">
+            <AppLogo size={40} className="rounded-xl" />
           </div>
           {!sidebarCollapsed && (
             <div className="min-w-0">
-              <p className="truncate text-sm font-semibold tracking-tight">AI Accessibility Agent</p>
-              <p className="text-muted-foreground truncate text-xs">AI-powered accessibility testing</p>
+              <p className="truncate text-sm font-semibold tracking-tight">{APP_NAME}</p>
+              <p className="text-muted-foreground truncate text-xs">{APP_TAGLINE}</p>
             </div>
           )}
         </div>
@@ -147,6 +150,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               key={href}
               href={href}
               className={navLinkClass(active, sidebarCollapsed)}
+              data-compact={sidebarCollapsed ? "true" : "false"}
               aria-current={active ? "page" : undefined}
             >
               <Icon className="size-4 shrink-0 opacity-80" aria-hidden />
@@ -168,6 +172,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <Link
                 href="/testing"
                 className={testingLinkClass(testingHubActive, sidebarCollapsed)}
+                data-compact={sidebarCollapsed ? "true" : "false"}
                 aria-current={testingHubActive ? "page" : undefined}
                 title={
                   testingAreaActive && !testingHubActive ? "Back to AI Testing hub" : undefined
@@ -179,6 +184,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <Link
                 href="/testing/scenarios"
                 className={testingLinkClass(testingScenariosActive, sidebarCollapsed)}
+                data-compact={sidebarCollapsed ? "true" : "false"}
                 aria-current={testingScenariosActive ? "page" : undefined}
               >
                 <ClipboardList className="size-4 shrink-0 opacity-80" aria-hidden />
@@ -224,7 +230,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       </aside>
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="border-border/60 flex h-[3.75rem] shrink-0 items-center gap-3 border-b border-white/10 px-4 sm:px-6">
+        <header className="agent-header-bar flex h-[3.75rem] shrink-0 items-center gap-3 px-4 backdrop-blur-md sm:px-6">
           <button
             type="button"
             onClick={() => setSidebarCollapsed((c) => !c)}
@@ -239,10 +245,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <PanelLeftClose className="size-5" aria-hidden />
             )}
           </button>
-          <h1 className="min-w-0 flex-1 truncate text-lg font-semibold tracking-tight">{title}</h1>
+          <h1 className="agent-title-gradient min-w-0 flex-1 truncate text-lg font-semibold tracking-tight">
+            {title}
+          </h1>
         </header>
         <div className="agent-screen flex min-h-0 flex-1 flex-col overflow-auto">
-          <div id="main-content" className="flex-1">
+          <A11yAmbience />
+          <div id="main-content" className="relative z-10 flex-1">
             {children}
           </div>
         </div>

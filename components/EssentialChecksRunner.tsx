@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -12,6 +12,7 @@ import {
   RotateCcw,
   ScanSearch,
 } from "lucide-react";
+import { ScanMethodologyPanel } from "@/components/ScanMethodologyPanel";
 import { UrlInput } from "@/components/UrlInput";
 import { useScanSession } from "@/components/ScanSessionProvider";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -87,9 +88,14 @@ function buildOverviewParagraph(
   violationInstances: number,
   passRules: number,
   summary: string,
+  needsReviewListed?: number,
 ): string {
   const shortUrl = scannedUrl.length > 72 ? `${scannedUrl.slice(0, 69)}…` : scannedUrl;
-  return `Accessibility scan for ${shortUrl} (${wcagLabel}). The automated check found ${violationInstances} issue instance${violationInstances === 1 ? "" : "s"} and ${passRules} rule${passRules === 1 ? "" : "s"} that passed. ${summary}`;
+  let body = `Accessibility scan for ${shortUrl} (${wcagLabel}). The automated check found ${violationInstances} violation instance${violationInstances === 1 ? "" : "s"} and ${passRules} rule${passRules === 1 ? "" : "s"} that passed.`;
+  if (needsReviewListed && needsReviewListed > 0) {
+    body += ` ${needsReviewListed} finding${needsReviewListed === 1 ? "" : "s"} need manual review (axe incomplete).`;
+  }
+  return `${body} ${summary}`;
 }
 
 export function EssentialChecksRunner({ fieldId }: { fieldId: string }) {
@@ -101,10 +107,12 @@ export function EssentialChecksRunner({ fieldId }: { fieldId: string }) {
   const [scanError, setScanError] = useState<string | null>(null);
   const [scannedUrl, setScannedUrl] = useState<string | null>(null);
   const [issues, setIssues] = useState<ScanIssue[]>([]);
+  const [reviewIssues, setReviewIssues] = useState<ScanIssue[]>([]);
   const [axeOverview, setAxeOverview] = useState<AxeOverviewStats | null>(null);
   const [wcagLabel, setWcagLabel] = useState<string>(WCAG_PRESET_OPTIONS[2].label);
   const [copyHint, setCopyHint] = useState<string | null>(null);
-  const [previewIndex, setPreviewIndex] = useState<number | null>(null);
+  /** Disambiguate Jira preview when violation and review rows share the same numeric index. */
+  const [previewJiraKey, setPreviewJiraKey] = useState<string | null>(null);
 
   const runScan = useCallback(async () => {
     const v = validateScanUrl(url);
@@ -114,7 +122,7 @@ export function EssentialChecksRunner({ fieldId }: { fieldId: string }) {
     }
     setScanError(null);
     setCopyHint(null);
-    setPreviewIndex(null);
+    setPreviewJiraKey(null);
     setScanning(true);
     try {
       const res = await fetch("/api/scan", {
@@ -130,6 +138,7 @@ export function EssentialChecksRunner({ fieldId }: { fieldId: string }) {
       const data = (await res.json()) as {
         error?: string;
         issues?: ScanIssue[];
+        reviewIssues?: ScanIssue[];
         scannedUrl?: string;
         axeOverview?: AxeOverviewStats;
         meta?: { wcagPreset?: WcagPresetId };
@@ -138,17 +147,20 @@ export function EssentialChecksRunner({ fieldId }: { fieldId: string }) {
         throw new Error(data.error || "Scan failed");
       }
       const list = data.issues ?? [];
+      const reviewList = data.reviewIssues ?? [];
       const finalUrl = data.scannedUrl ?? v.url;
       setIssues(list);
+      setReviewIssues(reviewList);
       setScannedUrl(finalUrl);
       setAxeOverview(data.axeOverview ?? null);
       const preset = data.meta?.wcagPreset ?? wcagPreset;
       const label = WCAG_PRESET_OPTIONS.find((o) => o.id === preset)?.label ?? wcagLabel;
       setWcagLabel(label.replace(/\s*\(Recommended\)\s*/i, "").trim());
-      setScanResults(finalUrl, list);
+      setScanResults(finalUrl, list, reviewList);
     } catch (e) {
       setScanError(e instanceof Error ? e.message : "Scan failed");
       setIssues([]);
+      setReviewIssues([]);
       setScannedUrl(null);
       setAxeOverview(null);
     } finally {
@@ -161,14 +173,17 @@ export function EssentialChecksRunner({ fieldId }: { fieldId: string }) {
     setUrl("");
     setScannedUrl(null);
     setIssues([]);
+    setReviewIssues([]);
     setAxeOverview(null);
     setScanError(null);
     setCopyHint(null);
-    setPreviewIndex(null);
+    setPreviewJiraKey(null);
   }, [scanning]);
 
   const passRules = axeOverview?.passRules ?? 0;
-  const needsReview = axeIncompleteReviewCount(axeOverview);
+  const needsReviewFromAxe = axeIncompleteReviewCount(axeOverview);
+  const needsReviewMetric =
+    reviewIssues.length > 0 ? reviewIssues.length : needsReviewFromAxe;
   const byImpact: Record<ImpactLevel, number> = {
     critical: 0,
     serious: 0,
@@ -178,7 +193,7 @@ export function EssentialChecksRunner({ fieldId }: { fieldId: string }) {
   for (const i of issues) {
     byImpact[i.impact]++;
   }
-  const summary = complianceRiskFromCounts(byImpact, needsReview);
+  const summary = complianceRiskFromCounts(byImpact, needsReviewMetric);
   const pathLabel = scannedUrl ? pagePathFromScannedUrl(scannedUrl) : "—";
 
   const copyText = useCallback(async (text: string, hint: string) => {
@@ -191,10 +206,17 @@ export function EssentialChecksRunner({ fieldId }: { fieldId: string }) {
     }
   }, []);
 
+  const allForJira = useMemo(() => [...issues, ...reviewIssues], [issues, reviewIssues]);
+
+  const jiraRowKey = useCallback(
+    (issue: ScanIssue) => `${issue.kind ?? "violation"}-${issue.id}-${issue.index}`,
+    [],
+  );
+
   const copyAllJira = useCallback(() => {
-    if (!scannedUrl || issues.length === 0) return;
-    void copyText(allJiraBugTitles(issues, scannedUrl), "All Jira titles copied");
-  }, [scannedUrl, issues, copyText]);
+    if (!scannedUrl || allForJira.length === 0) return;
+    void copyText(allJiraBugTitles(allForJira, scannedUrl), "All Jira titles copied");
+  }, [scannedUrl, allForJira, copyText]);
 
   return (
     <div className="space-y-6">
@@ -240,12 +262,18 @@ export function EssentialChecksRunner({ fieldId }: { fieldId: string }) {
                 <span>
                   <span className="text-sm font-medium text-zinc-100">Thorough single-page pass</span>
                   <p className="text-muted-foreground mt-1 text-xs leading-relaxed">
-                    Tabs through the page after load so more controls are included in the check.
+                    Tabs through the page after load so more of the DOM is visible to the rule-based linter before axe
+                    runs (not a screen reader).
                   </p>
                 </span>
               </label>
             </div>
           </div>
+
+          <ScanMethodologyPanel
+            variant="compact"
+            context={{ deepScan, voiceAssistantAvailable: false }}
+          />
 
           <div className="flex flex-wrap items-center gap-3">
             <Button
@@ -322,7 +350,14 @@ export function EssentialChecksRunner({ fieldId }: { fieldId: string }) {
                 </Badge>
               </div>
               <p className="text-foreground/95 max-w-4xl text-sm leading-relaxed sm:text-[15px]">
-                {buildOverviewParagraph(scannedUrl, wcagLabel, issues.length, passRules, summary)}
+                {buildOverviewParagraph(
+                  scannedUrl,
+                  wcagLabel,
+                  issues.length,
+                  passRules,
+                  summary,
+                  reviewIssues.length > 0 ? reviewIssues.length : undefined,
+                )}
               </p>
 
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -341,7 +376,7 @@ export function EssentialChecksRunner({ fieldId }: { fieldId: string }) {
                 />
                 <MetricTile
                   label="Needs review"
-                  value={needsReview}
+                  value={needsReviewMetric}
                   icon={HelpCircle}
                   iconClass="bg-violet-500/15 text-violet-300"
                 />
@@ -377,22 +412,25 @@ export function EssentialChecksRunner({ fieldId }: { fieldId: string }) {
           </div>
 
           <div className="border-border/50 rounded-2xl border border-white/10 bg-card/40 p-4 shadow-inner sm:p-6">
-            <Tabs defaultValue="jira" className="w-full gap-4">
+            <Tabs defaultValue="violations" className="w-full gap-4">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <TabsList className="h-auto w-full flex-wrap justify-start gap-1 bg-muted/30 sm:w-auto">
-                  <TabsTrigger value="issues" className="gap-1.5">
-                    Issues ({issues.length})
+                  <TabsTrigger value="violations" className="gap-1.5 tabular-nums">
+                    Violations ({issues.length})
                   </TabsTrigger>
-                  <TabsTrigger value="jira" className="gap-1.5">
-                    Jira bug reports ({issues.length})
+                  <TabsTrigger value="review" className="gap-1.5 tabular-nums">
+                    Needs review ({reviewIssues.length})
+                  </TabsTrigger>
+                  <TabsTrigger value="jira" className="gap-1.5 tabular-nums">
+                    Jira ({allForJira.length})
                   </TabsTrigger>
                 </TabsList>
               </div>
 
-              <TabsContent value="issues" className="mt-4 space-y-3 outline-none">
+              <TabsContent value="violations" className="mt-4 space-y-3 outline-none">
                 {issues.length === 0 ? (
                   <p className="text-muted-foreground py-8 text-center text-sm">
-                    No issues reported for this URL with the selected options.
+                    No violations for this URL with the selected options. Check Needs review for axe incomplete items.
                   </p>
                 ) : (
                   <ul className="space-y-2">
@@ -404,7 +442,7 @@ export function EssentialChecksRunner({ fieldId }: { fieldId: string }) {
                         <div className="min-w-0 flex-1">
                           <p className="text-foreground text-sm font-medium">{issue.description}</p>
                           <p className="text-muted-foreground mt-0.5 font-mono text-xs">
-                            {issue.id} · {pathLabel}
+                            #{issue.index} · {issue.id} · {pathLabel}
                           </p>
                         </div>
                         <span
@@ -421,46 +459,97 @@ export function EssentialChecksRunner({ fieldId }: { fieldId: string }) {
                 )}
               </TabsContent>
 
+              <TabsContent value="review" className="mt-4 space-y-3 outline-none">
+                {reviewIssues.length === 0 ? (
+                  <p className="text-muted-foreground py-8 text-center text-sm">
+                    No needs-review items returned for this scan.
+                  </p>
+                ) : (
+                  <ul className="space-y-2">
+                    {reviewIssues.map((issue) => (
+                      <li
+                        key={`${issue.index}-${issue.id}-${issue.html.slice(0, 24)}`}
+                        className="border-border/40 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/20 bg-amber-950/10 px-4 py-3"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className="text-foreground text-sm font-medium">{issue.description}</p>
+                          <p className="text-muted-foreground mt-0.5 font-mono text-xs">
+                            #{issue.index} · {issue.id} · {pathLabel}
+                          </p>
+                        </div>
+                        <div className="flex shrink-0 flex-wrap items-center gap-2">
+                          <Badge
+                            variant="outline"
+                            className="border-amber-500/45 bg-amber-500/10 text-amber-100"
+                          >
+                            Needs review
+                          </Badge>
+                          <span
+                            className={cn(
+                              "rounded-full border px-2.5 py-0.5 text-xs font-medium capitalize",
+                              IMPACT_STYLES[issue.impact].badge,
+                            )}
+                          >
+                            {issue.impact}
+                          </span>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </TabsContent>
+
               <TabsContent value="jira" className="mt-4 space-y-4 outline-none">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <h3 className="text-foreground flex items-center gap-2 text-sm font-semibold">
                     <ClipboardList className="size-4 text-emerald-400" aria-hidden />
-                    Jira-ready bug titles
+                    Jira-ready bug titles (violations + needs review)
                   </h3>
                   <Button
                     type="button"
                     variant="outline"
                     size="sm"
                     className="border-white/15 bg-black/30"
-                    disabled={issues.length === 0}
+                    disabled={allForJira.length === 0}
                     onClick={copyAllJira}
                   >
                     <Copy className="size-3.5" aria-hidden />
                     Copy all
                   </Button>
                 </div>
-                {issues.length === 0 ? (
+                {allForJira.length === 0 ? (
                   <p className="text-muted-foreground py-6 text-center text-sm">Nothing to copy yet.</p>
                 ) : (
                   <ul className="space-y-3">
-                    {issues.map((issue) => {
+                    {allForJira.map((issue) => {
                       const title = jiraBugReportTitle(issue, scannedUrl);
-                      const open = previewIndex === issue.index;
+                      const rowKey = jiraRowKey(issue);
+                      const open = previewJiraKey === rowKey;
                       return (
                         <li
-                          key={`jira-${issue.index}-${issue.id}`}
+                          key={`jira-${rowKey}`}
                           className="border-border/50 rounded-xl border border-white/[0.06] bg-gradient-to-br from-black/40 to-black/20 p-4"
                         >
                           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                             <p className="text-foreground min-w-0 flex-1 text-sm leading-snug font-medium">{title}</p>
-                            <span
-                              className={cn(
-                                "shrink-0 self-start rounded-full border px-2.5 py-0.5 text-xs font-medium capitalize",
-                                IMPACT_STYLES[issue.impact].badge,
-                              )}
-                            >
-                              {issue.impact}
-                            </span>
+                            <div className="flex shrink-0 flex-wrap items-center gap-2">
+                              {issue.kind === "needs_review" ? (
+                                <Badge
+                                  variant="outline"
+                                  className="border-amber-500/45 bg-amber-500/10 text-amber-100"
+                                >
+                                  Needs review
+                                </Badge>
+                              ) : null}
+                              <span
+                                className={cn(
+                                  "self-start rounded-full border px-2.5 py-0.5 text-xs font-medium capitalize",
+                                  IMPACT_STYLES[issue.impact].badge,
+                                )}
+                              >
+                                {issue.impact}
+                              </span>
+                            </div>
                           </div>
                           <div className="mt-3 flex flex-wrap gap-2">
                             <Button
@@ -478,7 +567,7 @@ export function EssentialChecksRunner({ fieldId }: { fieldId: string }) {
                               variant="outline"
                               size="sm"
                               className="border-white/15"
-                              onClick={() => setPreviewIndex(open ? null : issue.index)}
+                              onClick={() => setPreviewJiraKey(open ? null : rowKey)}
                             >
                               {open ? "Hide preview" : "Preview"}
                             </Button>

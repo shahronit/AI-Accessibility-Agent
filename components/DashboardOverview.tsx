@@ -6,13 +6,16 @@ import {
   AlertTriangle,
   ArrowRight,
   CheckCircle2,
+  Ear,
   Globe,
   Info,
   Loader2,
   Plus,
   ScanSearch,
+  Sparkles,
 } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { APP_NAME } from "@/lib/brand";
 import { cn } from "@/lib/utils";
 import { dashboardScanUrlKey, type HistoryEntry } from "@/lib/scanHistory";
 import type { ScanIssue } from "@/lib/axeScanner";
@@ -234,6 +237,49 @@ export function DashboardOverview({
 
   return (
     <div className="dashboard-overview space-y-8 px-4 py-6">
+      <section className="dashboard-hero-panel px-6 py-7 sm:px-8 sm:py-8" aria-labelledby="dashboard-hero-heading">
+        <div className="relative z-10 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div className="max-w-xl space-y-3">
+            <p className="text-emerald-400/85 flex items-center gap-2 text-xs font-semibold tracking-wider uppercase">
+              <Sparkles className="size-3.5 shrink-0" aria-hidden />
+              {APP_NAME}
+            </p>
+            <h2
+              id="dashboard-hero-heading"
+              className="agent-title-gradient text-2xl font-bold tracking-tight sm:text-3xl"
+            >
+              Clarity for every visitor
+            </h2>
+            <p className="text-muted-foreground text-sm leading-relaxed">
+              Track WCAG-oriented scans, severity trends, and recent URLs in one calm view—aligned with inclusive design,
+              keyboard paths, and voice-friendly flows.
+            </p>
+            <div className="flex flex-wrap gap-2 pt-1">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-cyan-500/25 bg-cyan-500/10 px-3 py-1 text-[11px] font-medium text-cyan-200/90">
+                <ScanSearch className="size-3.5 opacity-80" aria-hidden />
+                axe automation
+              </span>
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-violet-500/20 bg-violet-500/10 px-3 py-1 text-[11px] font-medium text-violet-200/85">
+                WCAG lens
+              </span>
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/25 bg-emerald-500/10 px-3 py-1 text-[11px] font-medium text-emerald-200/90">
+                <Ear className="size-3.5 opacity-80" aria-hidden />
+                Voice-ready UI
+              </span>
+            </div>
+          </div>
+          <Button
+            type="button"
+            size="default"
+            className="shrink-0 gap-2 bg-gradient-to-r from-emerald-600 to-cyan-600 text-white shadow-lg shadow-cyan-900/30 hover:from-emerald-500 hover:to-cyan-500"
+            onClick={onNewScanClick}
+          >
+            <Plus className="size-4" aria-hidden />
+            New scan
+          </Button>
+        </div>
+      </section>
+
       <div>
         <p className="text-muted-foreground text-sm">
           Saved scans on this device show violation counts and severity mix from axe. The chart below tracks how many
@@ -383,9 +429,11 @@ export function DashboardOverview({
                     <td className="py-3">
                       <button
                         type="button"
+                        disabled={row.status === "scanning"}
                         className={cn(
                           buttonVariants({ variant: "outline", size: "sm" }),
                           "border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/10",
+                          row.status === "scanning" && "pointer-events-none opacity-50",
                         )}
                         onClick={() => onViewResults(row.url)}
                       >

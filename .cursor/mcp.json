@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "accessibility-scanner": {
+      "command": "npx",
+      "args": ["-y", "mcp-accessibility-scanner"]
+    },
+    "shadcn": {
+      "command": "npx",
+      "args": ["-y", "shadcn@latest", "mcp"]
+    }
+  }
+}
