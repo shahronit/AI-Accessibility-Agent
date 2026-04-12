@@ -7,13 +7,15 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "mcp:a11y": "npx -y a11y-mcp-server"
+    "mcp:a11y": "npx -y a11y-mcp-server",
+    "toon:demo": "node scripts/toon-demo.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.82.0",
     "@base-ui/react": "^1.3.0",
     "@google/generative-ai": "^0.24.1",
     "@sparticuz/chromium": "^143.0.4",
+    "@toon-format/toon": "^2.1.0",
     "axe-core": "^4.11.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

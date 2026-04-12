@@ -1,9 +1,10 @@
 import type { ScanIssue } from "@/lib/axeScanner";
 import { TESTING_NORMATIVE_BASIS } from "@/lib/testingNorms";
+import { encodeStructuredForLlm, FINDINGS_TOON_HEADER } from "@/lib/toonEncode";
 
 export type TestingAnalysisMode = "pour" | "methods" | "checkpoints" | "comprehensive";
 
-const BASE_AGENT = `You are **A11yAgent**, an accessibility AI agent. You receive the **complete** list of automated findings from an axe-core scan (every violation detected for the page—not a single-issue sample). Your job is to analyze **all** findings together in relation to the requested framework. Reference specific rule IDs and issue indices from the data. If many issues share a theme, group them. Do not pretend only one issue exists.
+const BASE_AGENT = `You are **A11yAgent**, an accessibility AI agent. You receive the **complete** list of automated findings from an axe-core scan (every violation detected for the page—not a single-issue sample). Findings in the user message use **TOON** (Token-Oriented Object Notation), not JSON—read tabular headers and row delimiters as the schema. Your job is to analyze **all** findings together in relation to the requested framework. Reference specific rule IDs and issue indices from the data. If many issues share a theme, group them. Do not pretend only one issue exists.
 
 ${TESTING_NORMATIVE_BASIS}`;
 
@@ -31,7 +32,7 @@ function userIntro(scannedUrl: string, total: number, capped: number) {
   const tail = total > capped ? `\n\nNote: ${total - capped} additional findings were omitted from this payload for size; mention that the live scan had ${total} total.` : "";
   return `Scanned URL: ${scannedUrl}
 Total automated findings in this scan: ${total}
-Below is JSON for ${capped} findings (the full set of violations returned by the tool, up to the cap).${tail}`;
+Below is **TOON** (Token-Oriented Object Notation) for ${capped} findings—the same fields as JSON would carry, in a compact tabular layout (fewer tokens).${tail}`;
 }
 
 export function buildTestingAnalysisMessages(
@@ -47,14 +48,14 @@ ${OUTPUT_RULES}
 The axe scan returned **zero** violations for this URL. Write a concise report for mode **${mode}**: confirm the automated pass, state limits of automation, and supply a **non-repetitive** manual verification checklist drawn from **WebAIM’s WCAG 2 checklist** and **W3C Quickref** themes (plus **Granicus-style** task-flow checks where relevant). For **508**, note alignment with **WCAG 2.0 A/AA** only—not legacy §1194.22 tables. Tables optional. Still include ## Priority items to address with proactive verification steps (not empty boilerplate).`;
     const user = `Scanned URL: ${scannedUrl}
 Total automated findings: 0
-No findings JSON.`;
+No findings payload.`;
     return { system, user };
   }
 
   const cap = 80;
   const capped = issues.slice(0, cap);
   const payload = issuesPayload(issues, cap);
-  const json = JSON.stringify(payload, null, 2);
+  const findingsToon = encodeStructuredForLlm(payload);
 
   const intro = userIntro(scannedUrl, issues.length, capped.length);
 
@@ -89,8 +90,8 @@ Short list of **WebAIM checklist / Quickref** items axe cannot fully prove—**m
 
     const user = `${intro}
 
-Findings JSON:
-${json}`;
+${FINDINGS_TOON_HEADER}:
+${findingsToon}`;
 
     return { system, user };
   }
@@ -121,8 +122,8 @@ Phased timeline in **new** wording (no copy of prior bullets)—Automation → M
 
     const user = `${intro}
 
-Findings JSON:
-${json}`;
+${FINDINGS_TOON_HEADER}:
+${findingsToon}`;
 
     return { system, user };
   }
@@ -162,8 +163,8 @@ Ordered developer actions **without** repeating full checkpoint tables—referen
 
     const user = `${intro}
 
-Findings JSON:
-${json}`;
+${FINDINGS_TOON_HEADER}:
+${findingsToon}`;
 
     return { system, user };
   }
@@ -185,8 +186,8 @@ Use ## headings and tables. Never analyze only one issue unless the scan truly c
 
   const user = `${intro}
 
-Findings JSON:
-${json}`;
+${FINDINGS_TOON_HEADER}:
+${findingsToon}`;
 
   return { system, user };
 }

@@ -1,10 +1,13 @@
 import type { ScanIssue } from "@/lib/axeScanner";
 import { issuesPayloadCompact } from "@/lib/manualTestScenario";
 import { TESTING_NORMS_MANUAL_SCENARIOS } from "@/lib/testingNorms";
+import { encodeStructuredForLlm, FINDINGS_TOON_HEADER } from "@/lib/toonEncode";
 
 const SYSTEM = `You are a senior accessibility QA engineer. You write **manual** test cases for human testers (not automation scripts).
 
 ${TESTING_NORMS_MANUAL_SCENARIOS}
+
+When scan findings are attached, they use **TOON** (Token-Oriented Object Notation) for token efficiency—not JSON. Read headers and rows the same way you would structured JSON rows.
 
 Respond with **only** a single JSON object (no markdown code fences, no commentary before or after). Use this exact shape:
 {"testCases":[{"testScenario":"string","testCaseTitle":"string","steps":"string","actualResult":"string","expectedResult":"string"}]}
@@ -21,11 +24,11 @@ Rules:
 export function buildManualTestScenariosPrompt(scannedUrl: string, issues: ScanIssue[]): string {
   const capped = issues.slice(0, 60);
   const payload = issuesPayloadCompact(issues, 60);
-  const json = JSON.stringify(payload, null, 2);
+  const findingsToon = encodeStructuredForLlm(payload);
   const intro =
     issues.length === 0
       ? `Scanned URL: ${scannedUrl}\nAutomated findings: **none** (axe reported 0 violations). Generate proactive manual regression scenarios appropriate for a typical content page at this URL.`
-      : `Scanned URL: ${scannedUrl}\nTotal axe findings: ${issues.length}. JSON below has ${capped.length} findings (capped).\n\n${json}`;
+      : `Scanned URL: ${scannedUrl}\nTotal axe findings: ${issues.length}. Attached: ${capped.length} capped rows as TOON.\n\n${FINDINGS_TOON_HEADER}:\n${findingsToon}`;
   return intro;
 }
 

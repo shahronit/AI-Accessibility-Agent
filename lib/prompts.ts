@@ -1,4 +1,5 @@
 import type { ScanIssue } from "@/lib/axeScanner";
+import { encodeStructuredForLlm } from "@/lib/toonEncode";
 
 const BASE_TEMPLATE = `You are an accessibility expert. Produce a concise, precise report suitable for engineering and QA stakeholders (corporate tone: neutral, direct, no hype).
 
@@ -8,8 +9,8 @@ Formatting rules (strict):
 - Do not use underscore emphasis. Use Title Case section titles exactly as written below, each on its own line, followed by a blank line.
 - Use short paragraphs and tight bullets. No decorative markdown.
 
-Issue data (JSON):
-{{issue_json}}
+Issue data (TOON — Token-Oriented Object Notation; parse key: value and tabular sections like JSON semantics):
+{{issue_toon}}
 
 ---
 
@@ -63,8 +64,8 @@ Section 5 — Suggestions to Improve Further
 `;
 
 export function buildExplainPrompt(issue: ScanIssue): string {
-  const issueJson = JSON.stringify(issue, null, 2);
-  return BASE_TEMPLATE.replace("{{issue_json}}", issueJson);
+  const issueToon = encodeStructuredForLlm(issue);
+  return BASE_TEMPLATE.replace("{{issue_toon}}", issueToon);
 }
 
 export type ChatIssueFocus = {
