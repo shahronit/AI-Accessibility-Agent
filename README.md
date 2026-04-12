@@ -1,6 +1,6 @@
 # A11yAgent
 
-Next.js (App Router) workspace that scans public URLs with **axe-core** in **headless Chromium**, explains findings with **Gemini** ([Google AI Studio](https://aistudio.google.com/) free tier), **Claude** (Anthropic), or the **AssemblyAI LLM Gateway**, and includes a **Web Speech API** voice agent plus AI chat. LLM prompts attach scan rows as **TOON** ([Token-Oriented Object Notation](https://toonformat.dev) via [`@toon-format/toon`](https://www.npmjs.com/package/@toon-format/toon)) instead of JSON where possible to reduce token usage.
+Next.js (App Router) workspace that scans public URLs with **axe-core** in **headless Chromium**, explains findings with **Gemini** ([Google AI Studio](https://aistudio.google.com/) free tier), **Claude** (Anthropic), or the **AssemblyAI LLM Gateway**, and includes a **Web Speech API** voice agent plus AI chat. LLM prompts use **TOON** ([Token-Oriented Object Notation](https://toonformat.dev) via [`@toon-format/toon`](https://www.npmjs.com/package/@toon-format/toon)) for structured payloads—scan finding lists, explain-issue rows, testing-hub analysis, manual-scenario input, **and the in-app chat system context** (scan rollup + focused issue)—instead of JSON where it saves tokens.
 
 **Architecture:** For a detailed system overview, data flows, and Mermaid diagrams, see **[ARCHITECTURE.md](./ARCHITECTURE.md)**.
 

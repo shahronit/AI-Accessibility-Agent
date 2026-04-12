@@ -1,5 +1,9 @@
 import type { ScanIssue } from "@/lib/axeScanner";
-import { encodeStructuredForLlm } from "@/lib/toonEncode";
+import {
+  CHAT_FOCUS_TOON_HEADER,
+  CHAT_SCAN_TOON_HEADER,
+  encodeStructuredForLlm,
+} from "@/lib/toonEncode";
 
 const BASE_TEMPLATE = `You are an accessibility expert. Produce a concise, precise report suitable for engineering and QA stakeholders (corporate tone: neutral, direct, no hype).
 
@@ -100,16 +104,25 @@ export function buildChatSystemPrompt(
   } | null,
 ): string {
   const base =
-    "You are an expert accessibility consultant. Answer clearly and practically. Prefer WCAG-aligned guidance.";
+    "You are an expert accessibility consultant. Answer clearly and practically. Prefer WCAG-aligned guidance. **TOON** blocks (Token-Oriented Object Notation) are structured data—parse field names and tabular rows like JSON, not free text.";
 
   let scanBlock = "";
   if (scanSummary && scanSummary.total > 0) {
+    const scanPayload = {
+      scannedUrl: scanSummary.scannedUrl ?? "unknown",
+      total: scanSummary.total,
+      byImpact: {
+        critical: scanSummary.byImpact.critical ?? 0,
+        serious: scanSummary.byImpact.serious ?? 0,
+        moderate: scanSummary.byImpact.moderate ?? 0,
+        minor: scanSummary.byImpact.minor ?? 0,
+      },
+      topRules: scanSummary.topRules,
+    };
     scanBlock = `
-Full automated scan context (every violation returned for this URL—not a single-issue sample):
-- URL: ${scanSummary.scannedUrl ?? "unknown"}
-- Total findings: ${scanSummary.total}
-- By impact: critical=${scanSummary.byImpact.critical}, serious=${scanSummary.byImpact.serious}, moderate=${scanSummary.byImpact.moderate}, minor=${scanSummary.byImpact.minor}
-- Frequent rule ids: ${scanSummary.topRules.map((r) => `${r.id}(${r.count})`).join(", ")}
+Full automated scan context (every violation for this URL—not a single-issue sample):
+${CHAT_SCAN_TOON_HEADER}:
+${encodeStructuredForLlm(scanPayload)}
 `;
   } else {
     scanBlock = "\nNo scan results are loaded yet.\n";
@@ -117,12 +130,8 @@ Full automated scan context (every violation returned for this URL—not a singl
 
   if (focus?.issue) {
     const issueBlock = `
-Focused issue (this is the user's current selection):
-- Index: ${focus.issue.index}
-- Rule: ${focus.issue.id}
-- Impact: ${focus.issue.impact}
-- Description: ${focus.issue.description}
-- Help: ${focus.issue.helpUrl}
+${CHAT_FOCUS_TOON_HEADER}:
+${encodeStructuredForLlm(focus.issue)}
 `;
     if (focus.explanationText?.trim()) {
       const snip = focus.explanationText.trim().slice(0, EXPLANATION_SNIP_MAX);

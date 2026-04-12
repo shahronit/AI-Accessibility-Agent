@@ -543,7 +543,7 @@ export async function explainIssue(issue: ScanIssue): Promise<{ text: string; mo
       {
         role: "system",
         content:
-          "You are an accessibility expert. Follow the user message structure exactly. Write in professional corporate prose: no Markdown hash headings, no asterisk or underscore emphasis. Keep tables and the required ADD/REMOVE lines as specified.",
+          "You are an accessibility expert. Follow the user message structure exactly. Issue data at the top is **TOON** (Token-Oriented Object Notation)—parse it as structured fields. Write in professional corporate prose: no Markdown hash headings, no asterisk or underscore emphasis. Keep tables and the required ADD/REMOVE lines as specified.",
       },
       { role: "user", content: userContent },
     ],

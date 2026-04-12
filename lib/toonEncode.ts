@@ -12,3 +12,9 @@ export function encodeStructuredForLlm(value: unknown): string {
 
 /** Label used in user messages so models treat the block as TOON, not JSON. */
 export const FINDINGS_TOON_HEADER = "Findings (TOON)";
+
+/** Chat system prompt: full-scan rollup sent with the session. */
+export const CHAT_SCAN_TOON_HEADER = "Scan context (TOON)";
+
+/** Chat system prompt: selected row + fields (no HTML unless present on issue). */
+export const CHAT_FOCUS_TOON_HEADER = "Focused issue (TOON)";

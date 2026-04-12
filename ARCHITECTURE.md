@@ -172,7 +172,7 @@ flowchart LR
 
 - **`lib/aiClient.ts`** centralizes provider selection (`LLM_PROVIDER` or key precedence), retries (e.g. Gemini 429), and fallbacks between providers.
 - **`lib/prompts.ts`** — explain + chat system/user prompts.
-- **`lib/toonEncode.ts`** — encodes structured scan/issue payloads as **TOON** ([`@toon-format/toon`](https://www.npmjs.com/package/@toon-format/toon)) for fewer tokens than JSON in LLM requests.
+- **`lib/toonEncode.ts`** — encodes structured scan/issue payloads as **TOON** ([`@toon-format/toon`](https://www.npmjs.com/package/@toon-format/toon)) for fewer tokens than JSON in LLM requests (testing reports, explain, manual scenarios, and **`buildChatSystemPrompt`** scan summary + focused issue).
 - **`lib/issueSanitize.ts`** / **`sanitizeIssueForApi`** (re-exported from `clientApi.ts`) trim payloads sent to APIs.
 
 ---
