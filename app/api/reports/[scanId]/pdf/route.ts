@@ -36,7 +36,7 @@ export async function GET(
   const pages = getScanPages(scanId);
   const pdf = generatePdfReport(scan, pages);
 
-  return new Response(pdf, {
+  return new Response(new Uint8Array(pdf), {
     headers: {
       "Content-Type": "application/pdf",
       "Content-Disposition": `attachment; filename="a11y-report-${scanId.slice(0, 8)}.pdf"`,

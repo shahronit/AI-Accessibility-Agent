@@ -1,6 +1,7 @@
-# Render Blueprint (optional): https://render.com/docs/blueprint-spec
-# Create a Web Service from this repo, set runtime to Docker, or use "Apply" from Blueprint.
-# Add GEMINI_API_KEY (and other secrets) in the Render dashboard — do not commit them here.
+# Render Blueprint: https://render.com/docs/blueprint-spec
+# Deploy from the Render dashboard → "New" → "Blueprint" → point to this repo,
+# or create a Web Service manually with Docker runtime.
+# Add secret env vars (GEMINI_API_KEY, JWT_SECRET, etc.) in the Render dashboard.
 
 services:
   - type: web
@@ -9,6 +10,16 @@ services:
     dockerfilePath: ./Dockerfile
     plan: free
     region: oregon
+    disk:
+      name: a11yagent-data
+      mountPath: /app/data
+      sizeGB: 1
     envVars:
       - key: NODE_ENV
         value: production
+      - key: DB_PATH
+        value: /app/data/a11yagent.db
+      - key: JWT_SECRET
+        generateValue: true
+      - key: GEMINI_API_KEY
+        sync: false
