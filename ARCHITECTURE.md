@@ -129,6 +129,12 @@ sequenceDiagram
 - `lib/axeScanner.ts` — normalizes axe output into app **`ScanIssue`** shape.
 - `lib/url.ts` — URL validation for scans.
 - `lib/wcagAxeTags.ts` — maps WCAG preset → axe tags.
+- `lib/scanCookies.ts` — validates optional **`cookies`** JSON for **`POST /api/scan`** (domain must match scan host; size caps).
+
+### Sign-in workflow (UI) and authenticated scan
+
+- **Sign-in prep (UI):** In **`components/NewScanLayout.tsx`**, **Page may need a sign-in** shows **Sign-in prep** when the URL validates: open/copy URL, optional **Import session cookies** (`<details>` + JSON textarea), then **Start scan**.
+- **Cookie import (API):** **`POST /api/scan`** accepts **`cookies`** (JSON array) only when **`requiresLogin`** is true. **`app/api/scan/route.ts`** calls **`page.setCookie`** before **`page.goto`**. Response **`meta.cookiesApplied`** counts applied rows; **`meta.requiresLoginNote`** reflects whether cookies were used. Cookies are not persisted.
 
 ---
 

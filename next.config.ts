@@ -2,7 +2,7 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   // Headless Chromium + Puppeteer must not be bundled into the serverless function graph.
-  serverExternalPackages: ["puppeteer-core", "@sparticuz/chromium", "axe-core"],
+  serverExternalPackages: ["puppeteer-core", "@sparticuz/chromium", "axe-core", "better-sqlite3"],
   turbopack: {
     root: __dirname,
   },

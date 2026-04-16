@@ -1,0 +1,18 @@
+{
+  "manifest_version": 3,
+  "name": "A11yAgent: Accessibility Scanner",
+  "version": "2.0.0",
+  "description": "In-page accessibility scanning with axe-core, visual violation overlay, and URL bridge to the A11yAgent app.",
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "A11yAgent Scanner"
+  },
+  "permissions": ["activeTab", "storage", "scripting"],
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content-overlay.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

@@ -2,6 +2,7 @@
 
 import { useEffect, type ReactNode } from "react";
 import { ScanSessionProvider } from "@/components/ScanSessionProvider";
+import { AuthProvider } from "@/components/AuthProvider";
 import { loadUserSettings } from "@/lib/userSettings";
 
 function syncReducedMotionClass() {
@@ -26,5 +27,9 @@ export function Providers({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  return <ScanSessionProvider>{children}</ScanSessionProvider>;
+  return (
+    <AuthProvider>
+      <ScanSessionProvider>{children}</ScanSessionProvider>
+    </AuthProvider>
+  );
 }

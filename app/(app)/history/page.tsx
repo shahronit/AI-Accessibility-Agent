@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowRight, Calendar, ExternalLink, Trash2 } from "lucide-react";
+import { ArrowRight, Calendar, Download, ExternalLink, Trash2 } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { useAuth, authHeaders } from "@/components/AuthProvider";
 import { cn } from "@/lib/utils";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { clearScanHistory, loadScanHistory, type HistoryEntry } from "@/lib/scanHistory";
@@ -19,8 +20,19 @@ function formatWhen(iso: string) {
   }
 }
 
+interface DbScanEntry {
+  id: string;
+  url: string;
+  status: string;
+  overall_score: number | null;
+  total_violations: number;
+  started_at: string;
+}
+
 export default function HistoryPage() {
+  const { user, token } = useAuth();
   const [entries, setEntries] = useState<HistoryEntry[]>([]);
+  const [dbScans, setDbScans] = useState<DbScanEntry[]>([]);
 
   const refresh = useCallback(() => {
     setEntries(loadScanHistory());
@@ -30,6 +42,14 @@ export default function HistoryPage() {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- sync from localStorage after mount
     refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    if (!token) { setDbScans([]); return; }
+    fetch("/api/dashboard/history?limit=50", { headers: authHeaders(token) })
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => { if (data?.scans) setDbScans(data.scans); })
+      .catch(() => {});
+  }, [token]);
 
   const handleClear = () => {
     clearScanHistory();
@@ -105,6 +125,75 @@ export default function HistoryPage() {
           )}
         </CardContent>
       </Card>
+
+      {user && dbScans.length > 0 && (
+        <Card className="agent-card">
+          <CardHeader>
+            <CardTitle className="text-lg">Server-backed scans</CardTitle>
+            <CardDescription>
+              Multi-page scans saved to your account with full reports and PDF/CSV export.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ul className="space-y-3">
+              {dbScans.map((s) => (
+                <li
+                  key={s.id}
+                  className="border-border/60 flex flex-col gap-3 rounded-xl border border-white/10 bg-black/15 p-4 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <div className="min-w-0 flex-1 space-y-1">
+                    <p className="text-primary font-medium break-all">{s.url}</p>
+                    <p className="text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+                      <span className="inline-flex items-center gap-1">
+                        <Calendar className="size-3.5" aria-hidden />
+                        {formatWhen(s.started_at)}
+                      </span>
+                      <span className="capitalize">{s.status}</span>
+                      {s.overall_score != null && (
+                        <span>Score: {s.overall_score}</span>
+                      )}
+                      <span>{s.total_violations} violations</span>
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 gap-2">
+                    {s.status === "completed" && (
+                      <Link
+                        href={`/report?url=${encodeURIComponent(s.url)}&scanId=${s.id}`}
+                        className={cn(buttonVariants({ variant: "default", size: "sm" }), "gap-1.5")}
+                      >
+                        View report
+                        <ArrowRight className="size-4" aria-hidden />
+                      </Link>
+                    )}
+                    {s.status === "completed" && token && (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          const res = await fetch(`/api/reports/${s.id}/pdf`, {
+                            headers: authHeaders(token),
+                          });
+                          if (!res.ok) return;
+                          const blob = await res.blob();
+                          const url = URL.createObjectURL(blob);
+                          const a = document.createElement("a");
+                          a.href = url;
+                          a.download = `a11y-report-${s.id.slice(0, 8)}.pdf`;
+                          a.click();
+                          setTimeout(() => URL.revokeObjectURL(url), 60000);
+                        }}
+                        className={cn(buttonVariants({ variant: "outline", size: "sm" }), "gap-1.5")}
+                      >
+                        <Download className="size-3.5" aria-hidden />
+                        PDF
+                      </button>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

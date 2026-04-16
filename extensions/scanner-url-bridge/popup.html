@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>A11yAgent Scanner</title>
+    <style>
+      * { box-sizing: border-box; margin: 0; }
+      body {
+        font-family: system-ui, -apple-system, sans-serif;
+        padding: 12px;
+        width: 340px;
+        background: #0c0c0f;
+        color: #e4e4e7;
+      }
+      h1 { font-size: 14px; font-weight: 700; margin-bottom: 10px; color: #10b981; }
+
+      .section { margin-bottom: 10px; }
+      label { display: block; font-size: 11px; margin-bottom: 4px; color: #a1a1aa; }
+      select, input[type="url"] {
+        width: 100%;
+        padding: 7px 8px;
+        border-radius: 6px;
+        border: 1px solid #3f3f46;
+        background: #18181b;
+        color: #fafafa;
+        font-size: 12px;
+      }
+
+      .btn-row { display: flex; gap: 6px; margin-top: 8px; }
+      button {
+        flex: 1;
+        padding: 9px 6px;
+        border: none;
+        border-radius: 7px;
+        font-weight: 600;
+        cursor: pointer;
+        font-size: 12px;
+        color: white;
+      }
+      .btn-scan { background: #059669; }
+      .btn-scan:hover { background: #10b981; }
+      .btn-scan:disabled { opacity: 0.5; cursor: not-allowed; }
+      .btn-overlay { background: #6366f1; }
+      .btn-overlay:hover { background: #818cf8; }
+      .btn-send { background: #3f3f46; }
+      .btn-send:hover { background: #52525b; }
+      .btn-copy { background: #3f3f46; }
+      .btn-copy:hover { background: #52525b; }
+
+      #status { margin-top: 8px; font-size: 11px; color: #a1a1aa; min-height: 1.5em; }
+      #status.error { color: #f87171; }
+
+      .results { margin-top: 10px; }
+      .severity-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 5px 0;
+        font-size: 12px;
+        border-bottom: 1px solid #27272a;
+      }
+      .severity-row:last-child { border-bottom: none; }
+      .sev-badge {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 10px;
+        font-weight: 600;
+        text-transform: uppercase;
+      }
+      .sev-critical { background: #dc2626; }
+      .sev-serious { background: #ea580c; }
+      .sev-moderate { background: #ca8a04; }
+      .sev-minor { background: #2563eb; }
+      .sev-count { font-weight: 700; font-size: 14px; }
+
+      .score-display {
+        text-align: center;
+        padding: 10px;
+        border-radius: 8px;
+        background: #18181b;
+        border: 1px solid #27272a;
+        margin-top: 8px;
+      }
+      .score-value { font-size: 28px; font-weight: 800; }
+      .score-label { font-size: 10px; color: #a1a1aa; text-transform: uppercase; }
+      .score-good { color: #10b981; }
+      .score-ok { color: #ca8a04; }
+      .score-bad { color: #dc2626; }
+
+      .divider { border-top: 1px solid #27272a; margin: 10px 0; }
+    </style>
+  </head>
+  <body>
+    <h1>A11yAgent Scanner</h1>
+
+    <div class="section">
+      <label for="wcag-level">WCAG Level</label>
+      <select id="wcag-level">
+        <option value="wcag2a">WCAG 2.0 A</option>
+        <option value="wcag2aa" selected>WCAG 2.0 AA</option>
+        <option value="wcag21aa">WCAG 2.1 AA</option>
+        <option value="wcag22aa">WCAG 2.2 AA</option>
+        <option value="wcag2aaa">WCAG 2.0 AAA</option>
+      </select>
+    </div>
+
+    <div class="btn-row">
+      <button type="button" id="scan" class="btn-scan">Scan this page</button>
+      <button type="button" id="toggle-overlay" class="btn-overlay" disabled>Toggle overlay</button>
+    </div>
+
+    <p id="status" aria-live="polite"></p>
+
+    <div id="results-area" class="results" style="display:none">
+      <div class="score-display">
+        <div id="score-value" class="score-value">—</div>
+        <div class="score-label">accessibility score</div>
+      </div>
+      <div id="severity-breakdown" style="margin-top:8px"></div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="btn-row">
+      <button type="button" id="copy-report" class="btn-copy" disabled>Copy report</button>
+      <button type="button" id="send-to-app" class="btn-send">Send to app</button>
+    </div>
+
+    <div class="section" style="margin-top:8px">
+      <label for="base">Scanner app URL</label>
+      <input id="base" type="url" placeholder="http://localhost:3000" autocomplete="off" />
+    </div>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

@@ -48,6 +48,7 @@ On **macOS/Windows**, scans use your **installed Chromium-based browser** (macOS
 ## API
 
 - `POST /api/scan` — `{ "url": "https://..." }` → axe violations normalized as issues.
+- **Sign-in / gated pages:** **New scan** supports **Sign-in prep** (open/copy URL) and optional **cookie import** (JSON array, only with *Page may need a sign-in*) so **`POST /api/scan`** can run headless Chrome with `setCookie` before navigation. See **[ARCHITECTURE.md](./ARCHITECTURE.md)**.
 - `POST /api/ai-explain` — `{ "issue": { ...ScanIssue } }` → `{ explanation, model }`.
 - `POST /api/chat` — `{ "messages": [{role, content}], "scanSummary"?: {...} }` → `{ reply, model }`.
 

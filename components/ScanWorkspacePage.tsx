@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   Bot,
   FileDown,
@@ -28,7 +28,7 @@ import { scanRuntimeStageMessages } from "@/lib/scanRuntimeStages";
 import { exportIssuesCsv, exportIssuesPdf } from "@/lib/exportReports";
 import { openScanExplainTab, writeExplainWindowPayload } from "@/lib/explainWindowTransfer";
 import { MAX_ISSUES_IN_HISTORY, saveScanToHistory } from "@/lib/scanHistory";
-import { formatUrlForScanLog, validateScanUrl } from "@/lib/url";
+import { decodeScanUrlParam, formatUrlForScanLog, validateScanUrl } from "@/lib/url";
 import { APP_NAME } from "@/lib/brand";
 import {
   buildScanSummarySpeech,
@@ -68,6 +68,8 @@ type ScanSummary = {
 
 export default function ScanWorkspacePage() {
   const searchParams = useSearchParams();
+  const pathname = usePathname();
+  const router = useRouter();
   const { scannedUrl, issues, reviewIssues, setScanResults, clearScan, setScanActivity } = useScanSession();
   const [url, setUrl] = useState("");
   const [scanLoading, setScanLoading] = useState(false);
@@ -122,15 +124,43 @@ export default function ScanWorkspacePage() {
     return `${filter.charAt(0).toUpperCase() + filter.slice(1)} only`;
   }, [filter]);
 
+  const signinQueryActive = useMemo(
+    () =>
+      searchParams.get("requiresLogin") === "1" ||
+      searchParams.get("signin") === "1" ||
+      searchParams.get("requires_login") === "1",
+    [searchParams],
+  );
+
   useEffect(() => {
-    const u = searchParams.get("url");
-    if (!u?.trim()) return;
-    try {
-      setUrl(decodeURIComponent(u.trim()));
-    } catch {
-      setUrl(u.trim());
+    const sp = new URLSearchParams(searchParams.toString());
+    const rawUrl = sp.get("prefillUrl") ?? sp.get("url");
+    const signin =
+      sp.get("requiresLogin") === "1" ||
+      sp.get("signin") === "1" ||
+      sp.get("requires_login") === "1";
+    if (!rawUrl?.trim() && !signin) return;
+
+    if (rawUrl?.trim()) {
+      const decoded = decodeScanUrlParam(rawUrl);
+      const v = validateScanUrl(decoded);
+      if (v.ok) {
+        setUrl(v.url);
+        setScanError(null);
+      } else {
+        setScanError(`From link: ${v.error}`);
+      }
     }
-  }, [searchParams]);
+
+    sp.delete("prefillUrl");
+    sp.delete("url");
+    sp.delete("requiresLogin");
+    sp.delete("signin");
+    sp.delete("requires_login");
+    const next = sp.toString();
+    const path = pathname || "/scan";
+    router.replace(next ? `${path}?${next}` : path, { scroll: false });
+  }, [searchParams, pathname, router]);
 
   useEffect(() => {
     const scrollTo = () => {
@@ -219,6 +249,7 @@ export default function ScanWorkspacePage() {
             wcagPreset: o.wcagPreset,
             deepScan: o.deepScan,
             requiresLogin: o.requiresLogin,
+            ...(Array.isArray(o.cookies) && o.cookies.length > 0 ? { cookies: o.cookies } : {}),
           }),
           signal: ac.signal,
         });
@@ -545,6 +576,7 @@ export default function ScanWorkspacePage() {
                 <NewScanLayout
                   url={url}
                   onUrlChange={setUrl}
+                  defaultRequiresLogin={signinQueryActive}
                   scanLoading={scanLoading}
                   awaitingResultReveal={awaitingRevealAfterScan}
                   scanError={scanError}

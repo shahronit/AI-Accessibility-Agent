@@ -51,6 +51,21 @@ export function normalizeUrlInput(raw: string): string {
   return trimmed;
 }
 
+/** Decode a query param that may be multiply-encoded (e.g. from bookmarklets or redirects). */
+export function decodeScanUrlParam(raw: string): string {
+  let s = raw.trim();
+  for (let i = 0; i < 3; i++) {
+    try {
+      const next = decodeURIComponent(s);
+      if (next === s) break;
+      s = next;
+    } catch {
+      break;
+    }
+  }
+  return s;
+}
+
 export function validateScanUrl(raw: string): UrlValidationResult {
   const input = raw.trim();
   if (!input) {
@@ -90,6 +105,62 @@ export function validateScanUrl(raw: string): UrlValidationResult {
   }
 
   return { ok: true, url: parsed.toString(), parsed };
+}
+
+// --------------- DNS-resolving SSRF guard (server-only) ---------------
+
+function isPrivateIpv6(addr: string): boolean {
+  const lower = addr.toLowerCase();
+  if (lower === "::1") return true;
+  if (lower.startsWith("fe80:")) return true;
+  if (lower.startsWith("fc") || lower.startsWith("fd")) return true;
+  if (lower === "::") return true;
+  return false;
+}
+
+/**
+ * Resolve hostname via DNS and verify that none of the resolved IPs are private.
+ * This mitigates DNS rebinding and prevents SSRF through hostnames that resolve
+ * to internal addresses. Server-only — uses Node dns module.
+ */
+export async function validateUrlSafeWithDns(urlString: string): Promise<UrlValidationResult> {
+  const basic = validateScanUrl(urlString);
+  if (!basic.ok) return basic;
+
+  const { hostname } = basic.parsed;
+
+  // Skip DNS check for direct IP addresses (already checked by validateScanUrl)
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(hostname)) {
+    return basic;
+  }
+
+  try {
+    const dns = await import("node:dns");
+    const { resolve4, resolve6 } = dns.promises;
+
+    const [v4addrs, v6addrs] = await Promise.allSettled([
+      resolve4(hostname),
+      resolve6(hostname),
+    ]);
+
+    const ips: string[] = [];
+    if (v4addrs.status === "fulfilled") ips.push(...v4addrs.value);
+    if (v6addrs.status === "fulfilled") ips.push(...v6addrs.value);
+
+    if (ips.length === 0) {
+      return { ok: false, error: "Could not resolve hostname." };
+    }
+
+    for (const ip of ips) {
+      if (isPrivateIpv4(ip) || isPrivateIpv6(ip)) {
+        return { ok: false, error: "This host resolves to a private IP address and cannot be scanned." };
+      }
+    }
+  } catch {
+    return { ok: false, error: "DNS resolution failed for this hostname." };
+  }
+
+  return basic;
 }
 
 /**

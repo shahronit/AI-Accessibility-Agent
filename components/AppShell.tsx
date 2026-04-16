@@ -6,9 +6,12 @@ import { useEffect, useState } from "react";
 import {
   ClipboardList,
   ExternalLink,
+  GitCompareArrows,
   History as HistoryIcon,
   LayoutDashboard,
   LayoutGrid,
+  LogIn,
+  LogOut,
   PanelLeftClose,
   PanelLeftOpen,
   ScanSearch,
@@ -16,6 +19,7 @@ import {
 } from "lucide-react";
 import { A11yAmbience } from "@/components/A11yAmbience";
 import { AppLogo } from "@/components/AppLogo";
+import { useAuth } from "@/components/AuthProvider";
 import { APP_NAME, APP_TAGLINE } from "@/lib/brand";
 import { cn } from "@/lib/utils";
 import { loadUserSettings } from "@/lib/userSettings";
@@ -24,6 +28,7 @@ function pageTitle(pathname: string): string {
   if (pathname.startsWith("/history")) return "Scan history";
   if (pathname.startsWith("/settings")) return "Settings";
   if (pathname.startsWith("/scan/explain")) return "Issue explanation";
+  if (pathname.startsWith("/compare")) return "Compare scans";
   if (pathname.startsWith("/report")) return "Scan findings report";
   if (pathname.startsWith("/scan")) return "New scan";
   if (pathname === "/testing/ai-report") return "AI report Analysis";
@@ -45,6 +50,7 @@ const SIDEBAR_COLLAPSED_KEY = "a11y-sidebar-collapsed";
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const title = pageTitle(pathname);
+  const { user: authUser, logout } = useAuth();
   const [profileName, setProfileName] = useState("");
   const [profileEmail, setProfileEmail] = useState("");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -68,14 +74,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const sync = () => {
-      const s = loadUserSettings();
-      setProfileName(s.displayName?.trim() || "Local user");
-      setProfileEmail(s.displayEmail?.trim() || "This browser · not signed in");
+      if (authUser) {
+        setProfileName(authUser.name?.trim() || authUser.email.split("@")[0]);
+        setProfileEmail(authUser.email);
+      } else {
+        const s = loadUserSettings();
+        setProfileName(s.displayName?.trim() || "Local user");
+        setProfileEmail(s.displayEmail?.trim() || "This browser · not signed in");
+      }
     };
     sync();
     window.addEventListener("a11y-user-settings-changed", sync);
     return () => window.removeEventListener("a11y-user-settings-changed", sync);
-  }, []);
+  }, [authUser]);
 
   const primaryNav = [
     { href: "/", label: "Dashboard", icon: LayoutDashboard, active: pathname === "/" },
@@ -86,6 +97,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       active: pathname.startsWith("/scan"),
     },
     { href: "/history", label: "History", icon: HistoryIcon, active: pathname.startsWith("/history") },
+    { href: "/compare", label: "Compare", icon: GitCompareArrows, active: pathname.startsWith("/compare") },
     { href: "/settings", label: "Settings", icon: Settings, active: pathname.startsWith("/settings") },
   ] as const;
 
@@ -208,23 +220,50 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <span className={cn(sidebarCollapsed && "sr-only")}>WCAG reference</span>
           </a>
           {sidebarCollapsed ? (
-            <Link
-              href="/settings"
-              className="text-muted-foreground hover:text-foreground flex items-center justify-center rounded-lg px-2 py-2.5 text-sm"
-              aria-label="Settings and profile"
-            >
-              <Settings className="size-4 shrink-0 opacity-80" aria-hidden />
-            </Link>
+            authUser ? (
+              <button
+                onClick={logout}
+                className="text-muted-foreground hover:text-foreground flex items-center justify-center rounded-lg px-2 py-2.5 text-sm"
+                aria-label="Sign out"
+              >
+                <LogOut className="size-4 shrink-0 opacity-80" aria-hidden />
+              </button>
+            ) : (
+              <Link
+                href="/login"
+                className="text-muted-foreground hover:text-foreground flex items-center justify-center rounded-lg px-2 py-2.5 text-sm"
+                aria-label="Sign in"
+              >
+                <LogIn className="size-4 shrink-0 opacity-80" aria-hidden />
+              </Link>
+            )
           ) : (
             <div className="border-border/60 mt-3 rounded-xl border border-white/10 bg-black/25 px-3 py-3">
               <p className="truncate text-sm font-medium text-zinc-100">{profileName}</p>
               <p className="text-muted-foreground mt-0.5 truncate text-xs">{profileEmail}</p>
-              <Link
-                href="/settings"
-                className="text-emerald-400/90 mt-2 inline-block text-xs font-medium hover:underline"
-              >
-                Edit profile
-              </Link>
+              <div className="mt-2 flex items-center gap-3">
+                <Link
+                  href="/settings"
+                  className="text-emerald-400/90 text-xs font-medium hover:underline"
+                >
+                  Edit profile
+                </Link>
+                {authUser ? (
+                  <button
+                    onClick={logout}
+                    className="text-muted-foreground hover:text-foreground text-xs font-medium hover:underline"
+                  >
+                    Sign out
+                  </button>
+                ) : (
+                  <Link
+                    href="/login"
+                    className="text-emerald-400/90 text-xs font-medium hover:underline"
+                  >
+                    Sign in
+                  </Link>
+                )}
+              </div>
             </div>
           )}
         </div>

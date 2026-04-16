@@ -1,11 +1,12 @@
 "use client";
 
-import { Suspense, useMemo } from "react";
+import { Suspense, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Loader2, ScanSearch } from "lucide-react";
+import { Download, FileSpreadsheet, Loader2, ScanSearch } from "lucide-react";
 import { ScanFindingsReport } from "@/components/ScanFindingsReport";
 import { useScanSession } from "@/components/ScanSessionProvider";
+import { useAuth, authHeaders } from "@/components/AuthProvider";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -130,14 +131,66 @@ function ReportContent() {
   }
 
   return (
-    <ScanFindingsReport
-      scannedUrl={resolved.scannedUrl}
-      issues={resolved.issues}
-      savedAt={resolved.savedAt}
-      showSampleNotice={resolved.showSampleNotice}
-      totalIssuesHint={resolved.totalIssuesHint}
-      needsReview={resolved.needsReview ?? 0}
-    />
+    <>
+      <ServerReportExport />
+      <ScanFindingsReport
+        scannedUrl={resolved.scannedUrl}
+        issues={resolved.issues}
+        savedAt={resolved.savedAt}
+        showSampleNotice={resolved.showSampleNotice}
+        totalIssuesHint={resolved.totalIssuesHint}
+        needsReview={resolved.needsReview ?? 0}
+      />
+    </>
+  );
+}
+
+function ServerReportExport() {
+  const searchParams = useSearchParams();
+  const { token } = useAuth();
+  const scanId = searchParams.get("scanId");
+
+  const downloadReport = useCallback(async (format: "pdf" | "csv") => {
+    if (!scanId || !token) return;
+    try {
+      const res = await fetch(`/api/reports/${scanId}/${format}`, {
+        headers: authHeaders(token),
+      });
+      if (!res.ok) return;
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `a11y-report-${scanId.slice(0, 8)}.${format}`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch {
+      /* download failed silently */
+    }
+  }, [scanId, token]);
+
+  if (!scanId || !token) return null;
+
+  return (
+    <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-2 px-4 pt-4 sm:px-6">
+      <span className="text-muted-foreground text-xs">Server report:</span>
+      <button
+        type="button"
+        onClick={() => downloadReport("pdf")}
+        className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-black/25 px-3 py-1.5 text-xs transition-colors hover:bg-white/5"
+      >
+        <Download className="size-3.5" />
+        Download PDF
+      </button>
+      <button
+        type="button"
+        onClick={() => downloadReport("csv")}
+        className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-black/25 px-3 py-1.5 text-xs transition-colors hover:bg-white/5"
+      >
+        <FileSpreadsheet className="size-3.5" />
+        Download CSV
+      </button>
+    </div>
   );
 }
 

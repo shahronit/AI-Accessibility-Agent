@@ -294,11 +294,14 @@ function parseGeminiRetryDelayMs(message: string): number | null {
   return Math.min(Math.ceil(sec * 1000) + 750, 120_000);
 }
 
-function isGeminiRateLimitError(e: unknown): boolean {
-  if (e instanceof GoogleGenerativeAIFetchError && e.status === 429) return true;
+function isGeminiTransientError(e: unknown): boolean {
+  if (e instanceof GoogleGenerativeAIFetchError && (e.status === 429 || e.status === 503)) return true;
   const msg = e instanceof Error ? e.message : String(e);
-  return /429|Too Many Requests|exceeded your current quota|quota exceeded/i.test(msg);
+  return /429|503|Too Many Requests|Service Unavailable|exceeded your current quota|quota exceeded|high demand/i.test(msg);
 }
+
+/** @deprecated alias kept for call-sites — use isGeminiTransientError */
+const isGeminiRateLimitError = isGeminiTransientError;
 
 function geminiModelCandidates(primary: string): string[] {
   const fromEnv = process.env.GEMINI_MODEL_FALLBACKS?.split(",")
@@ -409,7 +412,7 @@ async function chatCompletionGemini(params: {
 
   const lastMsg = lastErr instanceof Error ? lastErr.message : String(lastErr);
   throw new Error(
-    `Gemini rate limit or quota exceeded after ${GEMINI_429_ATTEMPTS_PER_MODEL} attempts per model across: ${candidates.join(", ")}. ` +
+    `Gemini unavailable (rate limit / 503) after ${GEMINI_429_ATTEMPTS_PER_MODEL} attempts per model across: ${candidates.join(", ")}. ` +
       `Last error: ${lastMsg}. Options: wait and retry; set GEMINI_MODEL_DEFAULT / GEMINI_MODEL_FALLBACKS to other models; enable billing in Google AI; ` +
       `or add ANTHROPIC_API_KEY (app can fall back when LLM_PROVIDER=gemini). See https://ai.google.dev/gemini-api/docs/rate-limits`,
   );
@@ -439,7 +442,7 @@ async function runChatCompletion(params: {
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       const exhausted =
-        /rate limit|quota exceeded|429|Too Many Requests/i.test(msg) &&
+        /rate limit|quota exceeded|429|503|Too Many Requests|Service Unavailable|high demand/i.test(msg) &&
         geminiFallbackToAnthropic() &&
         hasAnthropicKey();
       if (exhausted) {

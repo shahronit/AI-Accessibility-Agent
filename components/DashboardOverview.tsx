@@ -1,10 +1,11 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   AlertTriangle,
   ArrowRight,
+  BarChart3,
   CheckCircle2,
   Ear,
   Globe,
@@ -15,6 +16,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { useAuth, authHeaders } from "@/components/AuthProvider";
 import { APP_NAME } from "@/lib/brand";
 import { cn } from "@/lib/utils";
 import { dashboardScanUrlKey, type HistoryEntry } from "@/lib/scanHistory";
@@ -172,6 +174,23 @@ export function DashboardOverview({
   onNewScanClick,
   onViewResults,
 }: Props) {
+  const { user, token } = useAuth();
+  const [dbStats, setDbStats] = useState<{
+    totalScans: number;
+    completedScans: number;
+    averageScore: number | null;
+    totalViolations: number;
+    severity: Record<string, number>;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!token) { setDbStats(null); return; }
+    fetch("/api/dashboard/stats", { headers: authHeaders(token) })
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => { if (data) setDbStats(data); })
+      .catch(() => {});
+  }, [token]);
+
   const latestByImpact = useMemo((): Record<string, number> => {
     if (issues.length > 0) {
       const live: Record<string, number> = {};
@@ -326,6 +345,41 @@ export function DashboardOverview({
           <p className="text-muted-foreground mt-1 text-[11px] leading-snug">Distinct pages in saved history</p>
         </div>
       </div>
+
+      {dbStats && user && (
+        <div className="rounded-2xl border border-emerald-500/20 bg-emerald-950/10 p-5 backdrop-blur-sm">
+          <h2 className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
+            <BarChart3 className="size-4" aria-hidden />
+            Server-backed stats
+          </h2>
+          <p className="text-muted-foreground mt-1 text-xs">
+            Aggregated from all scans saved to your account.
+          </p>
+          <div className="mt-3 grid gap-3 sm:grid-cols-4">
+            <div>
+              <p className="text-muted-foreground text-[11px] uppercase">Total</p>
+              <p className="text-xl font-bold tabular-nums text-zinc-100">{dbStats.totalScans}</p>
+            </div>
+            <div>
+              <p className="text-muted-foreground text-[11px] uppercase">Completed</p>
+              <p className="text-xl font-bold tabular-nums text-zinc-100">{dbStats.completedScans}</p>
+            </div>
+            <div>
+              <p className="text-muted-foreground text-[11px] uppercase">Avg score</p>
+              <p className="text-xl font-bold tabular-nums text-zinc-100">{dbStats.averageScore ?? "—"}</p>
+            </div>
+            <div>
+              <p className="text-muted-foreground text-[11px] uppercase">Total violations</p>
+              <p className="text-xl font-bold tabular-nums text-zinc-100">{dbStats.totalViolations}</p>
+            </div>
+          </div>
+          <div className="mt-2 flex flex-wrap gap-3">
+            <Link href="/compare" className="text-emerald-400/90 text-xs hover:underline">
+              Compare scans
+            </Link>
+          </div>
+        </div>
+      )}
 
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="rounded-2xl border border-white/[0.08] bg-zinc-900/40 p-5 backdrop-blur-sm">
