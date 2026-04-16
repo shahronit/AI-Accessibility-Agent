@@ -10,10 +10,6 @@ services:
     dockerfilePath: ./Dockerfile
     plan: free
     region: oregon
-    disk:
-      name: a11yagent-data
-      mountPath: /app/data
-      sizeGB: 1
     envVars:
       - key: NODE_ENV
         value: production

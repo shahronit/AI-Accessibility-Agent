@@ -1,19 +1,20 @@
-# ── Stage 1: Install deps & build ────────────────────────────────────
+# ── Stage 1: Install ALL deps & build ────────────────────────────────
 FROM node:20-bookworm-slim AS builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 make g++ \
     && rm -rf /var/lib/apt/lists/*
 
-ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
 WORKDIR /app
 
 COPY package.json package-lock.json ./
-RUN npm ci
+RUN npm ci --include=dev
 
 COPY . .
+
+ENV NODE_ENV=production
 RUN npm run build
 
 # ── Stage 2: Lean production image ──────────────────────────────────
