@@ -23,7 +23,8 @@ RUN npm prune --omit=dev
 # ── Stage 2: Lean production image ──────────────────────────────────
 FROM node:20-bookworm-slim AS runner
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN mkdir -p /usr/share/man/man1 \
+    && apt-get update && apt-get install -y --no-install-recommends \
     chromium \
     ca-certificates \
     fonts-liberation \
