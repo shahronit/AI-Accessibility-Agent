@@ -17,6 +17,9 @@ COPY . .
 ENV NODE_ENV=production
 RUN npm run build
 
+# Prune devDependencies so only production deps remain for the runner
+RUN npm prune --omit=dev
+
 # ── Stage 2: Lean production image ──────────────────────────────────
 FROM node:20-bookworm-slim AS runner
 
@@ -34,16 +37,16 @@ ENV PORT=3000
 
 WORKDIR /app
 
+# Standalone output already bundles most code; copy it first
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
-COPY --from=builder /app/node_modules/axe-core ./node_modules/axe-core
-COPY --from=builder /app/node_modules/better-sqlite3 ./node_modules/better-sqlite3
-COPY --from=builder /app/node_modules/bindings ./node_modules/bindings
-COPY --from=builder /app/node_modules/file-uri-to-path ./node_modules/file-uri-to-path
-COPY --from=builder /app/node_modules/prebuild-install ./node_modules/prebuild-install
-COPY --from=builder /app/node_modules/node-addon-api ./node_modules/node-addon-api
-COPY --from=builder /app/node_modules/pdfkit ./node_modules/pdfkit
+
+# Copy production node_modules for native/external packages
+# (better-sqlite3, pdfkit, axe-core, etc. that standalone can't inline)
+COPY --from=builder /app/node_modules ./node_modules
+
+# Extension files used at runtime
 COPY --from=builder /app/extensions ./extensions
 
 RUN mkdir -p /app/data
