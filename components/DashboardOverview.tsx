@@ -15,8 +15,8 @@ import {
   ScanSearch,
   Sparkles,
 } from "lucide-react";
+import { useSession } from "next-auth/react";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { useAuth, authHeaders } from "@/components/AuthProvider";
 import { APP_NAME } from "@/lib/brand";
 import { cn } from "@/lib/utils";
 import { dashboardScanUrlKey, type HistoryEntry } from "@/lib/scanHistory";
@@ -174,7 +174,9 @@ export function DashboardOverview({
   onNewScanClick,
   onViewResults,
 }: Props) {
-  const { user, token } = useAuth();
+  const { data: session, status } = useSession();
+  const user = session?.user ?? null;
+  const isAuthenticated = status === "authenticated";
   const [dbStats, setDbStats] = useState<{
     totalScans: number;
     completedScans: number;
@@ -184,12 +186,18 @@ export function DashboardOverview({
   } | null>(null);
 
   useEffect(() => {
-    if (!token) { setDbStats(null); return; }
-    fetch("/api/dashboard/stats", { headers: authHeaders(token) })
-      .then((r) => r.ok ? r.json() : null)
-      .then((data) => { if (data) setDbStats(data); })
+    if (!isAuthenticated) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- clear stats when session disappears
+      setDbStats(null);
+      return;
+    }
+    fetch("/api/dashboard/stats")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data) setDbStats(data);
+      })
       .catch(() => {});
-  }, [token]);
+  }, [isAuthenticated]);
 
   const latestByImpact = useMemo((): Record<string, number> => {
     if (issues.length > 0) {

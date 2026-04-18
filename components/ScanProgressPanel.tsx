@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useAuth } from "@/components/AuthProvider";
+import { useSession } from "next-auth/react";
 import { CheckCircle2, Loader2, XCircle, Globe, Ban } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -20,14 +20,15 @@ interface ScanProgressPanelProps {
 }
 
 export function ScanProgressPanel({ scanId, onComplete, onCancel }: ScanProgressPanelProps) {
-  const { token } = useAuth();
+  const { status } = useSession();
+  const isAuthenticated = status === "authenticated";
   const [progress, setProgress] = useState<ProgressEvent | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
-    if (!scanId || !token) return;
+    if (!scanId || !isAuthenticated) return;
 
     const controller = new AbortController();
     abortRef.current = controller;
@@ -35,7 +36,6 @@ export function ScanProgressPanel({ scanId, onComplete, onCancel }: ScanProgress
     async function stream() {
       try {
         const res = await fetch(`/api/scan/${scanId}/progress`, {
-          headers: { Authorization: `Bearer ${token}` },
           signal: controller.signal,
         });
         if (!res.ok || !res.body) {
@@ -78,17 +78,14 @@ export function ScanProgressPanel({ scanId, onComplete, onCancel }: ScanProgress
 
     stream();
     return () => controller.abort();
-  }, [scanId, token, onComplete]);
+  }, [scanId, isAuthenticated, onComplete]);
 
   const handleCancel = useCallback(async () => {
-    if (!token) return;
+    if (!isAuthenticated) return;
     abortRef.current?.abort();
-    await fetch(`/api/scan/${scanId}`, {
-      method: "DELETE",
-      headers: { Authorization: `Bearer ${token}` },
-    }).catch(() => {});
+    await fetch(`/api/scan/${scanId}`, { method: "DELETE" }).catch(() => {});
     onCancel?.();
-  }, [scanId, token, onCancel]);
+  }, [scanId, isAuthenticated, onCancel]);
 
   const pct = progress && progress.pagesTotal > 0
     ? Math.round((progress.pagesScanned / progress.pagesTotal) * 100)

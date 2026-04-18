@@ -1,5 +1,4 @@
-import { NextRequest } from "next/server";
-import { getAuthUser } from "@/lib/auth";
+import { auth } from "@/auth";
 import { getScanById } from "@/lib/db";
 import { getScanProgress } from "../../route";
 
@@ -10,12 +9,12 @@ function delay(ms: number) {
 }
 
 export async function GET(
-  req: NextRequest,
+  _req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
-  const user = getAuthUser(req);
-  if (!user) {
+  const session = await auth();
+  if (!session?.user?.id) {
     return new Response(JSON.stringify({ error: "Authentication required" }), {
       status: 401,
       headers: { "Content-Type": "application/json" },
@@ -23,7 +22,7 @@ export async function GET(
   }
 
   const scan = getScanById(id);
-  if (!scan || scan.user_id !== user.id) {
+  if (!scan || scan.user_id !== session.user.id) {
     return new Response(JSON.stringify({ error: "Scan not found" }), {
       status: 404,
       headers: { "Content-Type": "application/json" },

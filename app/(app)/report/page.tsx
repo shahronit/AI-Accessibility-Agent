@@ -4,9 +4,9 @@ import { Suspense, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Download, FileSpreadsheet, Loader2, ScanSearch } from "lucide-react";
+import { useSession } from "next-auth/react";
 import { ScanFindingsReport } from "@/components/ScanFindingsReport";
 import { useScanSession } from "@/components/ScanSessionProvider";
-import { useAuth, authHeaders } from "@/components/AuthProvider";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -147,15 +147,14 @@ function ReportContent() {
 
 function ServerReportExport() {
   const searchParams = useSearchParams();
-  const { token } = useAuth();
+  const { status } = useSession();
+  const isAuthenticated = status === "authenticated";
   const scanId = searchParams.get("scanId");
 
   const downloadReport = useCallback(async (format: "pdf" | "csv") => {
-    if (!scanId || !token) return;
+    if (!scanId || !isAuthenticated) return;
     try {
-      const res = await fetch(`/api/reports/${scanId}/${format}`, {
-        headers: authHeaders(token),
-      });
+      const res = await fetch(`/api/reports/${scanId}/${format}`);
       if (!res.ok) return;
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
@@ -167,9 +166,9 @@ function ServerReportExport() {
     } catch {
       /* download failed silently */
     }
-  }, [scanId, token]);
+  }, [scanId, isAuthenticated]);
 
-  if (!scanId || !token) return null;
+  if (!scanId || !isAuthenticated) return null;
 
   return (
     <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-2 px-4 pt-4 sm:px-6">

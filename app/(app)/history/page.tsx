@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowRight, Calendar, Download, ExternalLink, Trash2 } from "lucide-react";
+import { useSession } from "next-auth/react";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { useAuth, authHeaders } from "@/components/AuthProvider";
 import { cn } from "@/lib/utils";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { clearScanHistory, loadScanHistory, type HistoryEntry } from "@/lib/scanHistory";
@@ -30,7 +30,9 @@ interface DbScanEntry {
 }
 
 export default function HistoryPage() {
-  const { user, token } = useAuth();
+  const { data: session, status } = useSession();
+  const user = session?.user ?? null;
+  const isAuthenticated = status === "authenticated";
   const [entries, setEntries] = useState<HistoryEntry[]>([]);
   const [dbScans, setDbScans] = useState<DbScanEntry[]>([]);
 
@@ -44,12 +46,18 @@ export default function HistoryPage() {
   }, [refresh]);
 
   useEffect(() => {
-    if (!token) { setDbScans([]); return; }
-    fetch("/api/dashboard/history?limit=50", { headers: authHeaders(token) })
-      .then((r) => r.ok ? r.json() : null)
-      .then((data) => { if (data?.scans) setDbScans(data.scans); })
+    if (!isAuthenticated) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- reset DB-backed list when session disappears
+      setDbScans([]);
+      return;
+    }
+    fetch("/api/dashboard/history?limit=50")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data?.scans) setDbScans(data.scans);
+      })
       .catch(() => {});
-  }, [token]);
+  }, [isAuthenticated]);
 
   const handleClear = () => {
     clearScanHistory();
@@ -165,13 +173,11 @@ export default function HistoryPage() {
                         <ArrowRight className="size-4" aria-hidden />
                       </Link>
                     )}
-                    {s.status === "completed" && token && (
+                    {s.status === "completed" && isAuthenticated && (
                       <button
                         type="button"
                         onClick={async () => {
-                          const res = await fetch(`/api/reports/${s.id}/pdf`, {
-                            headers: authHeaders(token),
-                          });
+                          const res = await fetch(`/api/reports/${s.id}/pdf`);
                           if (!res.ok) return;
                           const blob = await res.blob();
                           const url = URL.createObjectURL(blob);

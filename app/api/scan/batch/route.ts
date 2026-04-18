@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth } from "@/lib/auth";
+import { auth } from "@/auth";
 import { createScan } from "@/lib/db";
 import { validateScanUrl } from "@/lib/url";
 import { parseWcagPreset, type WcagPresetId } from "@/lib/wcagAxeTags";
@@ -12,12 +12,11 @@ export async function POST(req: NextRequest) {
     const rateLimited = checkRateLimit(req, RATE_LIMITS.scan);
     if (rateLimited) return rateLimited;
 
-    let user;
-    try {
-      user = requireAuth(req);
-    } catch {
+    const session = await auth();
+    if (!session?.user?.id) {
       return NextResponse.json({ error: "Authentication required" }, { status: 401 });
     }
+    const userId = session.user.id;
 
     const body = await req.json();
     const { urls, wcagPreset: rawPreset } = body as {
@@ -46,7 +45,7 @@ export async function POST(req: NextRequest) {
         results.push({ url: rawUrl, error: validation.error });
         continue;
       }
-      const scan = createScan(user.id, validation.url, wcagPreset, 1);
+      const scan = createScan(userId, validation.url, wcagPreset, 1);
       results.push({ url: validation.url, scanId: scan.id });
     }
 

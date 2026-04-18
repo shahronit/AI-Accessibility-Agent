@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth } from "@/lib/auth";
+import { auth } from "@/auth";
 import { getScanById, getScanPages } from "@/lib/db";
 
 interface ViolationSummary {
@@ -35,12 +35,11 @@ function extractViolationRules(pages: { results_json: string | null }[]): Violat
 }
 
 export async function GET(req: NextRequest) {
-  let user;
-  try {
-    user = requireAuth(req);
-  } catch {
+  const session = await auth();
+  if (!session?.user?.id) {
     return NextResponse.json({ error: "Authentication required" }, { status: 401 });
   }
+  const userId = session.user.id;
 
   const { searchParams } = new URL(req.url);
   const scanAId = searchParams.get("scanA");
@@ -53,10 +52,10 @@ export async function GET(req: NextRequest) {
   const scanA = getScanById(scanAId);
   const scanB = getScanById(scanBId);
 
-  if (!scanA || scanA.user_id !== user.id) {
+  if (!scanA || scanA.user_id !== userId) {
     return NextResponse.json({ error: "Scan A not found" }, { status: 404 });
   }
-  if (!scanB || scanB.user_id !== user.id) {
+  if (!scanB || scanB.user_id !== userId) {
     return NextResponse.json({ error: "Scan B not found" }, { status: 404 });
   }
 

@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -17,9 +18,9 @@ import {
   ScanSearch,
   Settings,
 } from "lucide-react";
+import { signOut, useSession } from "next-auth/react";
 import { A11yAmbience } from "@/components/A11yAmbience";
 import { AppLogo } from "@/components/AppLogo";
-import { useAuth } from "@/components/AuthProvider";
 import { APP_NAME, APP_TAGLINE } from "@/lib/brand";
 import { cn } from "@/lib/utils";
 import { loadUserSettings } from "@/lib/userSettings";
@@ -40,6 +41,9 @@ function pageTitle(pathname: string): string {
   if (pathname === "/testing/checkpoints" || pathname.startsWith("/testing/checkpoints/")) {
     return "Essential checks";
   }
+  if (pathname === "/testing/expert-audit" || pathname.startsWith("/testing/expert-audit/")) {
+    return "Expert WCAG audit";
+  }
   if (pathname === "/testing" || pathname === "/testing/") return "AI Testing Dashboard";
   if (pathname.startsWith("/testing")) return "Testing";
   return "Dashboard";
@@ -50,7 +54,11 @@ const SIDEBAR_COLLAPSED_KEY = "a11y-sidebar-collapsed";
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const title = pageTitle(pathname);
-  const { user: authUser, logout } = useAuth();
+  const { data: session } = useSession();
+  const authUser = session?.user ?? null;
+  const handleSignOut = () => {
+    void signOut({ callbackUrl: "/" });
+  };
   const [profileName, setProfileName] = useState("");
   const [profileEmail, setProfileEmail] = useState("");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -75,8 +83,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const sync = () => {
       if (authUser) {
-        setProfileName(authUser.name?.trim() || authUser.email.split("@")[0]);
-        setProfileEmail(authUser.email);
+        const trimmedName = authUser.name?.trim();
+        const email = authUser.email ?? "";
+        const fallback = trimmedName || (email ? email.split("@")[0] : "GitHub user");
+        setProfileName(fallback);
+        setProfileEmail(email || "Signed in via GitHub");
       } else {
         const s = loadUserSettings();
         setProfileName(s.displayName?.trim() || "Local user");
@@ -221,16 +232,28 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </a>
           {sidebarCollapsed ? (
             authUser ? (
-              <button
-                onClick={logout}
-                className="text-muted-foreground hover:text-foreground flex items-center justify-center rounded-lg px-2 py-2.5 text-sm"
-                aria-label="Sign out"
-              >
-                <LogOut className="size-4 shrink-0 opacity-80" aria-hidden />
-              </button>
+              <div className="flex flex-col items-center gap-2">
+                {authUser.image ? (
+                  <Image
+                    src={authUser.image}
+                    alt=""
+                    width={28}
+                    height={28}
+                    className="size-7 shrink-0 rounded-full ring-1 ring-white/15"
+                  />
+                ) : null}
+                <button
+                  type="button"
+                  onClick={handleSignOut}
+                  className="text-muted-foreground hover:text-foreground flex items-center justify-center rounded-lg px-2 py-2.5 text-sm"
+                  aria-label="Sign out"
+                >
+                  <LogOut className="size-4 shrink-0 opacity-80" aria-hidden />
+                </button>
+              </div>
             ) : (
               <Link
-                href="/login"
+                href="/signin"
                 className="text-muted-foreground hover:text-foreground flex items-center justify-center rounded-lg px-2 py-2.5 text-sm"
                 aria-label="Sign in"
               >
@@ -239,8 +262,21 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             )
           ) : (
             <div className="border-border/60 mt-3 rounded-xl border border-white/10 bg-black/25 px-3 py-3">
-              <p className="truncate text-sm font-medium text-zinc-100">{profileName}</p>
-              <p className="text-muted-foreground mt-0.5 truncate text-xs">{profileEmail}</p>
+              <div className="flex items-center gap-3">
+                {authUser?.image ? (
+                  <Image
+                    src={authUser.image}
+                    alt=""
+                    width={36}
+                    height={36}
+                    className="size-9 shrink-0 rounded-full ring-1 ring-white/15"
+                  />
+                ) : null}
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-zinc-100">{profileName}</p>
+                  <p className="text-muted-foreground mt-0.5 truncate text-xs">{profileEmail}</p>
+                </div>
+              </div>
               <div className="mt-2 flex items-center gap-3">
                 <Link
                   href="/settings"
@@ -250,14 +286,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 </Link>
                 {authUser ? (
                   <button
-                    onClick={logout}
+                    type="button"
+                    onClick={handleSignOut}
                     className="text-muted-foreground hover:text-foreground text-xs font-medium hover:underline"
                   >
                     Sign out
                   </button>
                 ) : (
                   <Link
-                    href="/login"
+                    href="/signin"
                     className="text-emerald-400/90 text-xs font-medium hover:underline"
                   >
                     Sign in

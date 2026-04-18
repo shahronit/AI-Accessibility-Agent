@@ -1,17 +1,16 @@
-import { NextRequest, NextResponse } from "next/server";
-import { requireAuth } from "@/lib/auth";
+import { NextResponse } from "next/server";
+import { auth } from "@/auth";
 import { getDashboardStats, getSeverityBreakdown } from "@/lib/db";
 
-export async function GET(req: NextRequest) {
-  let user;
-  try {
-    user = requireAuth(req);
-  } catch {
+export async function GET() {
+  const session = await auth();
+  if (!session?.user?.id) {
     return NextResponse.json({ error: "Authentication required" }, { status: 401 });
   }
 
-  const stats = getDashboardStats(user.id);
-  const severity = getSeverityBreakdown(user.id);
+  const userId = session.user.id;
+  const stats = getDashboardStats(userId);
+  const severity = getSeverityBreakdown(userId);
 
   return NextResponse.json({ ...stats, severity });
 }

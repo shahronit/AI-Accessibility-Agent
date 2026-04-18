@@ -8,7 +8,7 @@ import { parseAndValidateScanCookies } from "@/lib/scanCookies";
 import { validateScanUrl } from "@/lib/url";
 import { normalizeAxeViolations, summarizeIssues } from "@/lib/axeScanner";
 import { axeTagsForPreset, parseWcagPreset, type WcagPresetId } from "@/lib/wcagAxeTags";
-import { getAuthUser } from "@/lib/auth";
+import { auth } from "@/auth";
 import { createScan, updateScan, createScanPage, calculateScore } from "@/lib/db";
 import { discoverPages } from "@/lib/crawler";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rateLimit";
@@ -94,12 +94,12 @@ export async function POST(req: NextRequest) {
 
     // ---- Multi-page scan (async, DB-backed, requires auth) ----
     if (Boolean(body.multiPage)) {
-      const user = getAuthUser(req);
-      if (!user) {
+      const session = await auth();
+      if (!session?.user?.id) {
         return NextResponse.json({ error: "Authentication required for multi-page scans" }, { status: 401 });
       }
       const maxPages = Math.min(Math.max(Number(body.maxPages) || 5, 1), 20);
-      const scan = createScan(user.id, targetUrl, wcagPreset, maxPages);
+      const scan = createScan(session.user.id, targetUrl, wcagPreset, maxPages);
 
       // Fire-and-forget background scan
       runMultiPageScan(scan.id, targetUrl, wcagPreset, tags, maxPages, deepScan, cookiesToSet).catch(
@@ -200,14 +200,15 @@ export async function POST(req: NextRequest) {
 
     // Persist single-page scan to DB when user is authenticated
     let dbScanId: string | undefined;
-    const authUser = getAuthUser(req);
-    if (authUser) {
+    const persistSession = await auth();
+    const persistUserId = persistSession?.user?.id;
+    if (persistUserId) {
       try {
         const vCount = issues.length;
         const pCount = axeOverview.passRules;
         const iCount = axeOverview.incompleteRules;
         const score = calculateScore(vCount, pCount);
-        const scan = createScan(authUser.id, targetUrl, wcagPreset, 1);
+        const scan = createScan(persistUserId, targetUrl, wcagPreset, 1);
         dbScanId = scan.id;
         createScanPage(
           scan.id, targetUrl, targetUrl, score,

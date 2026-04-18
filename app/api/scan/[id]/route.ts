@@ -1,20 +1,20 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getAuthUser } from "@/lib/auth";
+import { NextResponse } from "next/server";
+import { auth } from "@/auth";
 import { getScanById, getScanPages, updateScan } from "@/lib/db";
 import { requestCancelScan } from "../route";
 
 export async function GET(
-  req: NextRequest,
+  _req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
-  const user = getAuthUser(req);
-  if (!user) {
+  const session = await auth();
+  if (!session?.user?.id) {
     return NextResponse.json({ error: "Authentication required" }, { status: 401 });
   }
 
   const scan = getScanById(id);
-  if (!scan || scan.user_id !== user.id) {
+  if (!scan || scan.user_id !== session.user.id) {
     return NextResponse.json({ error: "Scan not found" }, { status: 404 });
   }
 
@@ -24,17 +24,17 @@ export async function GET(
 }
 
 export async function DELETE(
-  req: NextRequest,
+  _req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
-  const user = getAuthUser(req);
-  if (!user) {
+  const session = await auth();
+  if (!session?.user?.id) {
     return NextResponse.json({ error: "Authentication required" }, { status: 401 });
   }
 
   const scan = getScanById(id);
-  if (!scan || scan.user_id !== user.id) {
+  if (!scan || scan.user_id !== session.user.id) {
     return NextResponse.json({ error: "Scan not found" }, { status: 404 });
   }
 

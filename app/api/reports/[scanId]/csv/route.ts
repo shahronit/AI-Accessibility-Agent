@@ -1,17 +1,14 @@
-import { NextRequest } from "next/server";
-import { requireAuth } from "@/lib/auth";
+import { auth } from "@/auth";
 import { getScanById, getScanPages } from "@/lib/db";
 import { generateCsvReport } from "@/lib/serverReporter";
 
 export async function GET(
-  req: NextRequest,
+  _req: Request,
   { params }: { params: Promise<{ scanId: string }> },
 ) {
   const { scanId } = await params;
-  let user;
-  try {
-    user = requireAuth(req);
-  } catch {
+  const session = await auth();
+  if (!session?.user?.id) {
     return new Response(JSON.stringify({ error: "Authentication required" }), {
       status: 401,
       headers: { "Content-Type": "application/json" },
@@ -19,7 +16,7 @@ export async function GET(
   }
 
   const scan = getScanById(scanId);
-  if (!scan || scan.user_id !== user.id) {
+  if (!scan || scan.user_id !== session.user.id) {
     return new Response(JSON.stringify({ error: "Scan not found" }), {
       status: 404,
       headers: { "Content-Type": "application/json" },

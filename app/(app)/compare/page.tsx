@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useAuth, authHeaders } from "@/components/AuthProvider";
+import { useSession } from "next-auth/react";
 import { loadScanHistory } from "@/lib/scanHistory";
 import { ArrowDown, ArrowUp, GitCompareArrows, Loader2, Minus } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -66,7 +66,8 @@ function MetricCard({ label, valueA, valueB, diff, invert }: {
 }
 
 export default function ComparePage() {
-  const { token } = useAuth();
+  const { status } = useSession();
+  const isAuthenticated = status === "authenticated";
   const [scans, setScans] = useState<ScanOption[]>([]);
   const [scanA, setScanA] = useState("");
   const [scanB, setScanB] = useState("");
@@ -85,12 +86,12 @@ export default function ComparePage() {
       source: "local" as const,
     }));
 
-    if (!token) {
+    if (!isAuthenticated) {
       setScans(localScans);
       return;
     }
 
-    fetch("/api/dashboard/history?limit=50", { headers: authHeaders(token) })
+    fetch("/api/dashboard/history?limit=50")
       .then((r) => r.json())
       .then((data) => {
         const dbScans: ScanOption[] = (data.scans || [])
@@ -104,7 +105,7 @@ export default function ComparePage() {
       .catch(() => {
         setScans(localScans);
       });
-  }, [token]);
+  }, [isAuthenticated]);
 
   const compareLocal = useCallback(() => {
     const history = loadScanHistory();
@@ -157,10 +158,8 @@ export default function ComparePage() {
     const bothDb = aScan?.source === "db" && bScan?.source === "db";
 
     try {
-      if (bothDb && token) {
-        const res = await fetch(`/api/reports/compare?scanA=${scanA}&scanB=${scanB}`, {
-          headers: authHeaders(token),
-        });
+      if (bothDb && isAuthenticated) {
+        const res = await fetch(`/api/reports/compare?scanA=${scanA}&scanB=${scanB}`);
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Comparison failed");
         setResult(data);
@@ -172,9 +171,9 @@ export default function ComparePage() {
     } finally {
       setLoading(false);
     }
-  }, [scanA, scanB, token, scans, compareLocal]);
+  }, [scanA, scanB, isAuthenticated, scans, compareLocal]);
 
-  if (scans.length === 0 && !token) {
+  if (scans.length === 0 && !isAuthenticated) {
     return (
       <div className="flex flex-col items-center justify-center gap-4 p-12 text-center">
         <GitCompareArrows className="text-muted-foreground size-12" />
@@ -182,7 +181,7 @@ export default function ComparePage() {
         <p className="text-muted-foreground text-sm">
           Run at least two scans first, then come back to compare them. Sign in to persist scans to the database.
         </p>
-        <Link href="/login" className="text-emerald-400 text-sm hover:underline">
+        <Link href="/signin" className="text-emerald-400 text-sm hover:underline">
           Sign in
         </Link>
       </div>

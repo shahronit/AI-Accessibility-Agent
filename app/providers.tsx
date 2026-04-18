@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, type ReactNode } from "react";
+import { SessionProvider } from "next-auth/react";
+import type { Session } from "next-auth";
 import { ScanSessionProvider } from "@/components/ScanSessionProvider";
-import { AuthProvider } from "@/components/AuthProvider";
 import { loadUserSettings } from "@/lib/userSettings";
 
 function syncReducedMotionClass() {
@@ -13,7 +14,12 @@ function syncReducedMotionClass() {
   document.documentElement.classList.toggle("a11y-pref-reduced-motion", reduced);
 }
 
-export function Providers({ children }: { children: ReactNode }) {
+interface ProvidersProps {
+  children: ReactNode;
+  session: Session | null;
+}
+
+export function Providers({ children, session }: ProvidersProps) {
   useEffect(() => {
     syncReducedMotionClass();
     const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -28,8 +34,8 @@ export function Providers({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <AuthProvider>
+    <SessionProvider session={session}>
       <ScanSessionProvider>{children}</ScanSessionProvider>
-    </AuthProvider>
+    </SessionProvider>
   );
 }
