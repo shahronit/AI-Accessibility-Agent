@@ -1,5 +1,5 @@
 import type { Browser } from "puppeteer-core";
-import { validateUrlSafeWithDns } from "@/lib/url";
+import { assertSafeUrl } from "@/lib/ssrf-guard";
 
 const SKIP_EXTENSIONS = new Set([
   ".pdf", ".jpg", ".jpeg", ".png", ".gif", ".svg", ".webp", ".ico",
@@ -130,11 +130,16 @@ export async function discoverPages(
     }
   }
 
-  // 3. SSRF-validate all discovered URLs
+  // 3. SSRF-validate all discovered URLs (DNS-resolving guard prevents
+  // rebinding via discovered links pointing at internal addresses).
   const validated: string[] = [];
   for (const url of found) {
-    const check = await validateUrlSafeWithDns(url);
-    if (check.ok) validated.push(url);
+    try {
+      const parsed = await assertSafeUrl(url);
+      validated.push(parsed.toString());
+    } catch {
+      // skip unsafe / unresolvable links silently — same behaviour as before
+    }
     if (validated.length >= maxPages) break;
   }
 

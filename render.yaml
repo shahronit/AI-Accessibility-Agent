@@ -1,7 +1,17 @@
 # Render Blueprint: https://render.com/docs/blueprint-spec
-# Deploy from the Render dashboard → "New" → "Blueprint" → point to this repo,
-# or create a Web Service manually with Docker runtime.
-# Add secret env vars (GEMINI_API_KEY, JWT_SECRET, etc.) in the Render dashboard.
+#
+# Deploy from the Render dashboard → "New" → "Blueprint" → point to this
+# repo. After the first deploy you must populate the `sync: false`
+# secrets below in the Render dashboard before the service will start
+# accepting requests on protected routes.
+#
+# What's wired in (Fixes 1–9):
+#   - Fix 1  NextAuth + GitHub OAuth   → NEXTAUTH_SECRET, GITHUB_ID, GITHUB_SECRET, NEXTAUTH_URL
+#   - Fix 2  Upstash rate limiting     → UPSTASH_REDIS_REST_URL/TOKEN  (optional, no-op when unset)
+#   - Fix 5  IBM Equal Access          → IBM_CHECKER_ENABLED=true (default; set to false to skip)
+#   - Fix 6  Scan cache (10-min)       → reuses Upstash creds above
+#   - Fix 7  /history + /report/[id]   → reuses Upstash creds above
+#   - Fix 8  GitHub Actions a11y gate  → A11Y_CI_TOKEN (only set if you want the gate to bypass auth)
 
 services:
   - type: web
@@ -10,12 +20,58 @@ services:
     dockerfilePath: ./Dockerfile
     plan: free
     region: oregon
+    healthCheckPath: /
     envVars:
+      # ── Runtime basics ──────────────────────────────────────────────
       - key: NODE_ENV
         value: production
+      - key: PORT
+        value: "3000"
+      # SQLite path for multi-page scan history. On the free plan there is
+      # no persistent disk, so the DB is recreated on every cold start;
+      # add a `disks:` entry on a paid plan if you need persistence.
       - key: DB_PATH
         value: /app/data/a11yagent.db
-      - key: JWT_SECRET
+
+      # ── Fix 1 — NextAuth + GitHub OAuth ─────────────────────────────
+      - key: NEXTAUTH_SECRET
         generateValue: true
+      # Render publishes the public URL as RENDER_EXTERNAL_URL once the
+      # service is live; set NEXTAUTH_URL to that value (e.g.
+      # https://a11yagent.onrender.com) so OAuth callbacks resolve
+      # correctly. Cannot be auto-derived because OAuth providers must
+      # see a stable callback URL.
+      - key: NEXTAUTH_URL
+        sync: false
+      - key: GITHUB_ID
+        sync: false
+      - key: GITHUB_SECRET
+        sync: false
+
+      # ── AI providers (configure at least one) ───────────────────────
+      - key: ANTHROPIC_API_KEY
+        sync: false
       - key: GEMINI_API_KEY
+        sync: false
+      - key: ASSEMBLYAI_API_KEY
+        sync: false
+
+      # ── Fix 2 / Fix 6 / Fix 7 — Upstash Redis ───────────────────────
+      # When unset, rate limiting + scan cache + scan history all
+      # degrade gracefully (no 429s, no caching, no /history index).
+      - key: UPSTASH_REDIS_REST_URL
+        sync: false
+      - key: UPSTASH_REDIS_REST_TOKEN
+        sync: false
+
+      # ── Fix 5 — IBM Equal Access ────────────────────────────────────
+      # Default is on. Set to "false" to skip IBM and only use axe-core
+      # (saves ~3-5s per scan on cold starts).
+      - key: IBM_CHECKER_ENABLED
+        value: "true"
+
+      # ── Fix 8 — GitHub Actions a11y gate ────────────────────────────
+      # Only needed if you point the workflow at this Render deployment
+      # instead of a CI-local server. Generate with `openssl rand -hex 32`.
+      - key: A11Y_CI_TOKEN
         sync: false

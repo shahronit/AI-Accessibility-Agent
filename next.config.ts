@@ -7,7 +7,17 @@ const root = dirname(__filename);
 
 const nextConfig: NextConfig = {
   output: "standalone",
-  serverExternalPackages: ["puppeteer-core", "@sparticuz/chromium", "axe-core", "better-sqlite3"],
+  serverExternalPackages: [
+    "puppeteer-core",
+    "@sparticuz/chromium",
+    "axe-core",
+    "better-sqlite3",
+    // accessibility-checker uses dynamic require() of compiled engines + an
+    // optional baseline file. Keeping it external prevents Turbopack from
+    // tracing those dynamic imports and lets it load via Node's runtime
+    // require, which is what the IBM engine expects.
+    "accessibility-checker",
+  ],
   images: {
     remotePatterns: [
       {

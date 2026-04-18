@@ -45,6 +45,17 @@ export function ScanIssueExplainWorkspace() {
 
   useEffect(() => {
     if (!payload || payload.mode !== "issue" || !payload.issue) return;
+    // Fix 6 fast path: if the parent workspace pre-fetched this issue's
+    // explanation (top-10 auto-explain warm-up), render it immediately
+    // instead of re-hitting `/api/ai-explain`. The text is already
+    // server-sanitised when it lands here.
+    if (payload.prefetchedExplanation) {
+      setExplainLoading(false);
+      setExplainError(null);
+      setExplanation(payload.prefetchedExplanation);
+      setExplainModel(payload.prefetchedExplanationModel ?? null);
+      return;
+    }
     let cancelled = false;
     setExplainLoading(true);
     setExplainError(null);

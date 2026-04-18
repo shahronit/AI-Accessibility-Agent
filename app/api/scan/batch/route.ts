@@ -1,15 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { createScan } from "@/lib/db";
-import { validateScanUrl } from "@/lib/url";
+import { assertSafeUrl, SsrfError } from "@/lib/ssrf-guard";
 import { parseWcagPreset, type WcagPresetId } from "@/lib/wcagAxeTags";
-import { checkRateLimit, RATE_LIMITS } from "@/lib/rateLimit";
+import { enforceRateLimit, scanLimiter } from "@/lib/rateLimit";
 
 const MAX_BATCH = 10;
 
 export async function POST(req: NextRequest) {
   try {
-    const rateLimited = checkRateLimit(req, RATE_LIMITS.scan);
+    const rateLimited = await enforceRateLimit(req, scanLimiter);
     if (rateLimited) return rateLimited;
 
     const session = await auth();
@@ -40,13 +40,22 @@ export async function POST(req: NextRequest) {
         results.push({ url: String(rawUrl), error: "Invalid URL" });
         continue;
       }
-      const validation = validateScanUrl(rawUrl);
-      if (!validation.ok) {
-        results.push({ url: rawUrl, error: validation.error });
+      let parsed: URL;
+      try {
+        parsed = await assertSafeUrl(rawUrl);
+      } catch (e) {
+        const message =
+          e instanceof SsrfError
+            ? e.message
+            : e instanceof Error
+              ? e.message
+              : "Invalid URL";
+        results.push({ url: rawUrl, error: message });
         continue;
       }
-      const scan = createScan(userId, validation.url, wcagPreset, 1);
-      results.push({ url: validation.url, scanId: scan.id });
+      const safeUrl = parsed.toString();
+      const scan = createScan(userId, safeUrl, wcagPreset, 1);
+      results.push({ url: safeUrl, scanId: scan.id });
     }
 
     return NextResponse.json({ results }, { status: 202 });

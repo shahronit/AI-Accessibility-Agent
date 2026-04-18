@@ -1,0 +1,7 @@
+{
+  "_comment": "URLs the GitHub Actions a11y-check workflow scans on every PR. The runner starts the Next.js app on port 3000, then scripts/ci-scan.mjs POSTs each entry to /api/scan. Use http://localhost:3000/* paths for the bundled app, or external URLs you want to monitor. CRITICAL violations gate the PR; SERIOUS or lower are reported but never fail the build. Override at runtime by setting A11Y_SCAN_URLS to a JSON array.",
+  "urls": [
+    "http://localhost:3000",
+    "http://localhost:3000/signin"
+  ]
+}

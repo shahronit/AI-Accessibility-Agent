@@ -1,0 +1,140 @@
+# Fix 8 - Accessibility gate for every pull request.
+#
+# Two jobs:
+#   1. build      - install deps, lint, and build the Next.js app
+#   2. a11y-scan  - boot `npm run start`, hit the /api/scan endpoint via
+#                   `scripts/ci-scan.mjs` for each URL listed in
+#                   `.a11y-urls.json`, fail the build only if any
+#                   `impact === "critical"` violations are found.
+#
+# Required GitHub repo secrets (Settings -> Secrets and variables -> Actions):
+#   - A11Y_CI_TOKEN      arbitrary opaque string the workflow sends as
+#                        `X-A11y-CI-Token`. The middleware admits the
+#                        request when this matches `process.env.A11Y_CI_TOKEN`
+#                        (set on the running CI server). Without it,
+#                        /api/scan would 302-redirect the runner to /signin.
+#   - NEXTAUTH_SECRET    NextAuth needs a non-empty value at boot, even
+#                        though no OAuth flow runs in CI.
+#   - ANTHROPIC_API_KEY  optional - only needed if any scanned page calls
+#                        AI endpoints from a server component.
+#   - GEMINI_API_KEY     same as above (fallback provider).
+
+name: A11y check
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: a11y-check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build & lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        env:
+          # Fix 1 requires NEXTAUTH_SECRET to be set at build time too.
+          NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET }}
+        run: npm run build
+
+  a11y-scan:
+    name: Accessibility scan
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      # Server-side env (consumed by `npm run start`).
+      NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET }}
+      A11Y_CI_TOKEN: ${{ secrets.A11Y_CI_TOKEN }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      # Skip IBM Equal Access in CI - it requires chromedriver and we
+      # already have axe-core via @sparticuz/chromium.
+      IBM_CHECKER_ENABLED: "false"
+      # Client-side env (consumed by `scripts/ci-scan.mjs`).
+      A11Y_BASE_URL: http://localhost:3000
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Start Next.js server
+        run: |
+          npm run start > server.log 2>&1 &
+          echo "SERVER_PID=$!" >> "$GITHUB_ENV"
+
+      - name: Wait for server health
+        run: |
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:3000/ > /dev/null; then
+              echo "Server is up after ${i} attempt(s)."
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::Server did not become reachable within 60s"
+          tail -n 200 server.log || true
+          exit 1
+
+      - name: Run accessibility scans
+        id: a11y_scan
+        run: node scripts/ci-scan.mjs | tee a11y-summary.txt
+
+      - name: Comment summary on PR (on failure)
+        if: failure() && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let body = '## A11yAgent CI scan\n\n❌ Critical accessibility violations were detected.\n\n';
+            try {
+              const summary = fs.readFileSync('a11y-summary.txt', 'utf8');
+              body += '```\n' + summary.slice(0, 60_000) + '\n```\n';
+            } catch (e) {
+              body += '_Could not read scan summary: ' + e.message + '_';
+            }
+            body += '\nSee the workflow run for the full step summary.';
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });
+
+      - name: Stop server
+        if: always()
+        run: |
+          if [ -n "${SERVER_PID:-}" ]; then
+            kill "$SERVER_PID" 2>/dev/null || true
+          fi

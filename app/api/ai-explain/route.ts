@@ -1,33 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
-import type { ScanIssue } from "@/lib/axeScanner";
 import { explainIssue } from "@/lib/aiClient";
+import { enforceRateLimit, aiLimiter } from "@/lib/rateLimit";
+import { sanitiseHtml } from "@/lib/sanitise";
+import { AiExplainRequestSchema } from "@/lib/schemas";
+import { validateRequest } from "@/lib/validate-request";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
 export const dynamic = "force-dynamic";
 
-function isScanIssue(value: unknown): value is ScanIssue {
-  if (!value || typeof value !== "object") return false;
-  const o = value as Record<string, unknown>;
-  return (
-    typeof o.id === "string" &&
-    typeof o.description === "string" &&
-    typeof o.impact === "string" &&
-    typeof o.html === "string" &&
-    typeof o.helpUrl === "string" &&
-    typeof o.index === "number"
-  );
-}
-
 export async function POST(req: NextRequest) {
   try {
-    const body = (await req.json()) as { issue?: unknown };
-    if (!isScanIssue(body.issue)) {
-      return NextResponse.json({ error: "Invalid issue payload." }, { status: 400 });
-    }
+    const rateLimited = await enforceRateLimit(req, aiLimiter);
+    if (rateLimited) return rateLimited;
 
-    const { text, model } = await explainIssue(body.issue);
-    return NextResponse.json({ explanation: text, model });
+    const parsed = await validateRequest(req, AiExplainRequestSchema);
+    if (!parsed.ok) return parsed.error;
+
+    const { text, model } = await explainIssue(parsed.data.issue);
+    return NextResponse.json({ explanation: sanitiseHtml(text), model });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Explanation failed";
     const misconfigured =

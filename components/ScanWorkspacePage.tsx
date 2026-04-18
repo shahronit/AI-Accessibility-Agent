@@ -13,6 +13,7 @@ import {
   Loader2,
   RotateCcw,
   ScanSearch,
+  Sparkles,
   Ticket,
 } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -27,6 +28,7 @@ import { summarizeIssues, type AxeOverviewStats, type ScanIssue } from "@/lib/ax
 import { scanRuntimeStageMessages } from "@/lib/scanRuntimeStages";
 import { exportIssuesCsv, exportIssuesPdf } from "@/lib/exportReports";
 import { openScanExplainTab, writeExplainWindowPayload } from "@/lib/explainWindowTransfer";
+import { explainAllIssues, issueExplainKey, pickTopIssues } from "@/lib/explain-all";
 import { MAX_ISSUES_IN_HISTORY, saveScanToHistory } from "@/lib/scanHistory";
 import { decodeScanUrlParam, formatUrlForScanLog, validateScanUrl } from "@/lib/url";
 import { APP_NAME } from "@/lib/brand";
@@ -92,6 +94,29 @@ export default function ScanWorkspacePage() {
   const [awaitingRevealAfterScan, setAwaitingRevealAfterScan] = useState(false);
   /** After reveal, scan returned 0 issues — show success empty instead of “start scan”. */
   const [showZeroViolationsBanner, setShowZeroViolationsBanner] = useState(false);
+  /**
+   * Result of GET /api/scan-diff for the most recent scan. Null when there is
+   * no prior scan to diff against, or when Upstash isn't configured. We hold
+   * just the summary numbers because the chip is the only consumer.
+   */
+  const [scanDiffSummary, setScanDiffSummary] = useState<{ added: number; resolved: number } | null>(
+    null,
+  );
+  /**
+   * Fix 6 - Pre-fetched explanations for the top 10 issues by severity, keyed
+   * by `issueExplainKey(issue)`. Populated as `explainAllIssues` resolves
+   * each call; the openExplain handler reads from here so the explain tab
+   * renders instantly when the issue was warmed.
+   */
+  const prefetchedExplanationsRef = useRef<Map<string, { text: string; model: string | null }>>(
+    new Map(),
+  );
+  /** Progress chip state: `{ done: 3, total: 10 }` while warming, null when idle/done. */
+  const [autoExplainProgress, setAutoExplainProgress] = useState<{ done: number; total: number } | null>(
+    null,
+  );
+  /** AbortController for the in-flight auto-explain batch (cancel on new scan). */
+  const autoExplainAbortRef = useRef<AbortController | null>(null);
 
   const scanSummary: ScanSummary | null = useMemo(() => {
     if (!scannedUrl) return null;
@@ -239,6 +264,13 @@ export default function ScanWorkspacePage() {
       setJiraFeedback(null);
       setScanActivity({ inProgress: true, pendingUrl: v.url });
       setSelected(null);
+      setScanDiffSummary(null);
+      // Fix 6 - kill any in-flight top-10 warm-up from the previous scan so
+      // its callbacks can't smuggle stale explanations into the new run.
+      autoExplainAbortRef.current?.abort();
+      autoExplainAbortRef.current = null;
+      prefetchedExplanationsRef.current = new Map();
+      setAutoExplainProgress(null);
       setVoiceStatus("Scan started.");
       try {
         const res = await fetch("/api/scan", {
@@ -293,6 +325,63 @@ export default function ScanWorkspacePage() {
           },
         ]);
         setScanResults(finalUrl, list, reviewList);
+        // Fix 6 - kick off bounded-concurrency explanations for the top 10
+        // issues by severity. Best-effort: failed entries surface in the
+        // count but never block the UI; the on-demand path still works for
+        // any issue not in the warm batch.
+        const top = pickTopIssues(list, 10);
+        if (top.length > 0) {
+          const ac2 = new AbortController();
+          autoExplainAbortRef.current = ac2;
+          setAutoExplainProgress({ done: 0, total: top.length });
+          void explainAllIssues(top, {
+            signal: ac2.signal,
+            onResult: (ev) => {
+              if (scanGenerationRef.current !== generation) return;
+              if (ev.explanation) {
+                prefetchedExplanationsRef.current.set(issueExplainKey(ev.issue), {
+                  text: ev.explanation,
+                  model: ev.model,
+                });
+              }
+              setAutoExplainProgress({ done: ev.done, total: ev.total });
+            },
+          })
+            .catch((e) => {
+              console.warn("[scan] explainAllIssues batch failed:", e);
+            })
+            .finally(() => {
+              if (scanGenerationRef.current !== generation) return;
+              setAutoExplainProgress(null);
+              if (autoExplainAbortRef.current === ac2) {
+                autoExplainAbortRef.current = null;
+              }
+            });
+        }
+        // Fire-and-forget: fetch the URL-keyed diff so we can show a
+        // "vs. last scan" chip. Best-effort — failures (no Upstash, 401,
+        // etc.) just leave the chip hidden.
+        void (async () => {
+          try {
+            const diffRes = await fetch(
+              `/api/scan-diff?url=${encodeURIComponent(finalUrl)}`,
+              { signal: ac.signal },
+            );
+            if (!diffRes.ok) return;
+            const diffData = (await diffRes.json()) as {
+              diff?: { summary?: { added: number; resolved: number } } | null;
+            };
+            if (scanGenerationRef.current !== generation) return;
+            const summary = diffData.diff?.summary;
+            if (summary && (summary.added > 0 || summary.resolved > 0)) {
+              setScanDiffSummary({ added: summary.added, resolved: summary.resolved });
+            } else {
+              setScanDiffSummary(null);
+            }
+          } catch {
+            // silent: diff is purely informational
+          }
+        })();
         if (list.length === 0 && reviewList.length > 0) {
           setFindingsTab("review");
         } else {
@@ -380,6 +469,10 @@ export default function ScanWorkspacePage() {
     setVoiceStatus("Session reset.");
     setExplainWindowOpeningIndex(null);
     setJiraFeedback(null);
+    autoExplainAbortRef.current?.abort();
+    autoExplainAbortRef.current = null;
+    prefetchedExplanationsRef.current = new Map();
+    setAutoExplainProgress(null);
   }, [clearScan, setScanActivity]);
 
   const openExplainInNewWindow = useCallback(
@@ -389,12 +482,15 @@ export default function ScanWorkspacePage() {
         return;
       }
       setSelected(issue);
+      const cached = prefetchedExplanationsRef.current.get(issueExplainKey(issue));
       writeExplainWindowPayload({
         mode: "issue",
         scannedUrl,
         scanSummary,
         issue,
         prefillChat: null,
+        prefetchedExplanation: cached?.text ?? null,
+        prefetchedExplanationModel: cached?.model ?? null,
       });
       const w = openScanExplainTab();
       if (!w) {
@@ -748,17 +844,41 @@ export default function ScanWorkspacePage() {
                     onValueChange={(v) => setFindingsTab(v as "violations" | "review")}
                     className="w-full min-w-0"
                   >
-                    <TabsList
-                      className="flex h-auto w-full flex-wrap justify-start gap-1 bg-muted/30"
-                      aria-label="Findings type"
-                    >
-                      <TabsTrigger value="violations" className="tabular-nums">
-                        Violations ({issues.length})
-                      </TabsTrigger>
-                      <TabsTrigger value="review" className="tabular-nums">
-                        Needs review ({reviewIssues.length})
-                      </TabsTrigger>
-                    </TabsList>
+                    <div className="mb-2 flex flex-wrap items-center gap-2">
+                      <TabsList
+                        className="flex h-auto flex-wrap justify-start gap-1 bg-muted/30"
+                        aria-label="Findings type"
+                      >
+                        <TabsTrigger value="violations" className="tabular-nums">
+                          Violations ({issues.length})
+                        </TabsTrigger>
+                        <TabsTrigger value="review" className="tabular-nums">
+                          Needs review ({reviewIssues.length})
+                        </TabsTrigger>
+                      </TabsList>
+                      {scanDiffSummary ? (
+                        <span
+                          className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-medium text-zinc-200"
+                          title="Comparison against the previous scan of this URL"
+                        >
+                          vs. last scan: <span className="text-rose-300">+{scanDiffSummary.added} new</span>
+                          <span className="text-zinc-400">, </span>
+                          <span className="text-emerald-300">-{scanDiffSummary.resolved} resolved</span>
+                        </span>
+                      ) : null}
+                      {autoExplainProgress ? (
+                        <span
+                          className="inline-flex items-center gap-1.5 rounded-full border border-violet-300/30 bg-violet-300/10 px-2.5 py-1 text-xs font-medium text-violet-100"
+                          role="status"
+                          aria-live="polite"
+                          title="Pre-fetching AI explanations for the top issues so they open instantly"
+                        >
+                          <Sparkles className="size-3 shrink-0" aria-hidden />
+                          Explaining {autoExplainProgress.done}/{autoExplainProgress.total}
+                          {autoExplainProgress.done < autoExplainProgress.total ? "…" : " ✓"}
+                        </span>
+                      ) : null}
+                    </div>
                     <TabsContent value="violations" className="mt-3 outline-none" tabIndex={-1}>
                       {issues.length === 0 ? (
                         <p className="text-muted-foreground rounded-lg border border-white/[0.06] bg-black/20 px-4 py-10 text-center text-sm leading-relaxed">

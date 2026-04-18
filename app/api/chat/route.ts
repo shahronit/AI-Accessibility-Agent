@@ -1,60 +1,29 @@
 import { NextRequest, NextResponse } from "next/server";
-import { chatWithContext, type ChatMessage } from "@/lib/aiClient";
-import type { ChatIssueFocus } from "@/lib/prompts";
+import { chatWithContext } from "@/lib/aiClient";
+import { enforceRateLimit, chatLimiter } from "@/lib/rateLimit";
+import { sanitiseHtml } from "@/lib/sanitise";
+import { ChatRequestSchema } from "@/lib/schemas";
+import { validateRequest } from "@/lib/validate-request";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
 export const dynamic = "force-dynamic";
 
-type ScanSummaryPayload = {
-  scannedUrl?: string;
-  total: number;
-  byImpact: Record<string, number>;
-  topRules: { id: string; count: number }[];
-};
-
-function isChatMessage(value: unknown): value is ChatMessage {
-  if (!value || typeof value !== "object") return false;
-  const o = value as Record<string, unknown>;
-  return (o.role === "user" || o.role === "assistant") && typeof o.content === "string";
-}
-
-function isIssueFocus(value: unknown): value is ChatIssueFocus {
-  if (!value || typeof value !== "object") return false;
-  const o = value as Record<string, unknown>;
-  return (
-    typeof o.index === "number" &&
-    typeof o.id === "string" &&
-    typeof o.impact === "string" &&
-    typeof o.description === "string" &&
-    typeof o.helpUrl === "string"
-  );
-}
-
 export async function POST(req: NextRequest) {
   try {
-    const body = (await req.json()) as {
-      messages?: unknown;
-      scanSummary?: unknown;
-      issueFocus?: unknown;
-      explanationContext?: unknown;
-    };
+    const rateLimited = await enforceRateLimit(req, chatLimiter);
+    if (rateLimited) return rateLimited;
 
-    if (!Array.isArray(body.messages) || !body.messages.every(isChatMessage)) {
-      return NextResponse.json({ error: "messages must be an array of {role, content}" }, { status: 400 });
-    }
+    const parsed = await validateRequest(req, ChatRequestSchema);
+    if (!parsed.ok) return parsed.error;
+    const body = parsed.data;
 
-    let scanSummary: ScanSummaryPayload | undefined;
-    if (body.scanSummary && typeof body.scanSummary === "object") {
-      const s = body.scanSummary as ScanSummaryPayload;
-      if (typeof s.total === "number" && s.byImpact && Array.isArray(s.topRules)) {
-        scanSummary = s;
-      }
-    }
-
-    const issueFocus = isIssueFocus(body.issueFocus) ? body.issueFocus : null;
+    const scanSummary = body.scanSummary ?? undefined;
+    const issueFocus = body.issueFocus ?? null;
     const explanationContext =
-      typeof body.explanationContext === "string" ? body.explanationContext.slice(0, 24_000) : null;
+      typeof body.explanationContext === "string"
+        ? body.explanationContext.slice(0, 24_000)
+        : null;
 
     const { text, model } = await chatWithContext(
       body.messages,
@@ -62,7 +31,7 @@ export async function POST(req: NextRequest) {
       issueFocus,
       explanationContext,
     );
-    return NextResponse.json({ reply: text, model });
+    return NextResponse.json({ reply: sanitiseHtml(text), model });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Chat failed";
     const misconfigured =

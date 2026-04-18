@@ -1,17 +1,27 @@
 import { NextRequest, NextResponse } from "next/server";
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 import puppeteer from "puppeteer-core";
 import { getPuppeteerLaunchConfig } from "@/lib/browserLaunch";
 import { summarizeChromeAxTree } from "@/lib/chromeAxTreeSummary";
 import { SCAN_ENGINE_INFO } from "@/lib/scanEnginesMeta";
 import { parseAndValidateScanCookies } from "@/lib/scanCookies";
-import { validateScanUrl } from "@/lib/url";
-import { normalizeAxeViolations, summarizeIssues } from "@/lib/axeScanner";
+import { assertSafeUrl, SsrfError } from "@/lib/ssrf-guard";
+import { mergeFindings, normalizeAxeViolations, summarizeIssues } from "@/lib/axeScanner";
 import { axeTagsForPreset, parseWcagPreset, type WcagPresetId } from "@/lib/wcagAxeTags";
 import { auth } from "@/auth";
 import { createScan, updateScan, createScanPage, calculateScore } from "@/lib/db";
 import { discoverPages } from "@/lib/crawler";
-import { checkRateLimit, RATE_LIMITS } from "@/lib/rateLimit";
+import { enforceRateLimit, scanLimiter } from "@/lib/rateLimit";
+import { runIbmChecker } from "@/lib/ibmChecker";
+import {
+  getCachedScan,
+  saveScan,
+  setCachedScan,
+  type StoredScanResult,
+} from "@/lib/scan-store";
+import { ScanRequestSchema } from "@/lib/schemas";
+import { validateRequest } from "@/lib/validate-request";
 
 export const maxDuration = 60;
 export const runtime = "nodejs";
@@ -46,27 +56,23 @@ export async function POST(req: NextRequest) {
   let browser: Awaited<ReturnType<typeof puppeteer.launch>> | undefined;
 
   try {
-    const rateLimited = checkRateLimit(req, RATE_LIMITS.scan);
+    const rateLimited = await enforceRateLimit(req, scanLimiter);
     if (rateLimited) return rateLimited;
 
-    const body = (await req.json()) as {
-      url?: unknown;
-      wcagPreset?: unknown;
-      deepScan?: unknown;
-      requiresLogin?: unknown;
-      cookies?: unknown;
-      includeAxeOverview?: unknown;
-      multiPage?: unknown;
-      maxPages?: unknown;
-    };
-    const rawUrl = typeof body.url === "string" ? body.url : "";
-    const validation = validateScanUrl(rawUrl);
+    const parsed = await validateRequest(req, ScanRequestSchema);
+    if (!parsed.ok) return parsed.error;
+    const body = parsed.data;
 
-    if (!validation.ok) {
-      return NextResponse.json({ error: validation.error }, { status: 400 });
+    let parsedUrl: URL;
+    try {
+      parsedUrl = await assertSafeUrl(body.url);
+    } catch (e) {
+      if (e instanceof SsrfError) {
+        return NextResponse.json({ error: e.message }, { status: 400 });
+      }
+      throw e;
     }
-
-    const targetUrl = validation.url;
+    const targetUrl = parsedUrl.toString();
     const wcagPreset: WcagPresetId = parseWcagPreset(body.wcagPreset);
     const deepScan = Boolean(body.deepScan);
     const requiresLogin = Boolean(body.requiresLogin);
@@ -74,8 +80,7 @@ export async function POST(req: NextRequest) {
 
     const rawCookies = body.cookies;
     const cookiesExplicit = rawCookies !== undefined && rawCookies !== null;
-    const cookiesNonEmpty =
-      cookiesExplicit && Array.isArray(rawCookies) && rawCookies.length > 0;
+    const cookiesNonEmpty = cookiesExplicit && Array.isArray(rawCookies) && rawCookies.length > 0;
     if (cookiesNonEmpty && !requiresLogin) {
       return NextResponse.json(
         { error: "cookies may only be sent when requiresLogin is true." },
@@ -91,6 +96,35 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: cookieParse.error }, { status: 400 });
     }
     const cookiesToSet = cookieParse.cookies;
+
+    // ---- Cache lookup (single-page scans only) ----
+    // Cache key intentionally excludes the per-request cookie payload so
+    // logged-in test sessions never poison anonymous scans, and includes
+    // anything that materially changes the scan output (preset, deep scan,
+    // login flag, IBM toggle).
+    const forceBypass =
+      req.nextUrl.searchParams.get("force") === "true" || Boolean(body.force);
+    const cacheOptions: Record<string, unknown> = {
+      wcagPreset,
+      deepScan,
+      requiresLogin,
+      ibm: process.env.IBM_CHECKER_ENABLED?.trim().toLowerCase() !== "false",
+    };
+    const isSinglePage = !Boolean(body.multiPage);
+    if (isSinglePage && !forceBypass && cookiesToSet.length === 0) {
+      const cached = await getCachedScan(targetUrl, cacheOptions);
+      if (cached && Date.now() - cached.cachedAt <= 1000 * 60 * 10) {
+        const ageSeconds = Math.round((Date.now() - cached.cachedAt) / 1000);
+        console.info(`[scan] cache HIT url=${targetUrl} age=${ageSeconds}s`);
+        return NextResponse.json(cached.payload, {
+          headers: {
+            "X-Cache": "HIT",
+            "X-Cache-Age": String(ageSeconds),
+          },
+        });
+      }
+      console.info(`[scan] cache MISS url=${targetUrl}`);
+    }
 
     // ---- Multi-page scan (async, DB-backed, requires auth) ----
     if (Boolean(body.multiPage)) {
@@ -149,6 +183,7 @@ export async function POST(req: NextRequest) {
       axeOpts.runOnly = { type: "tag", values: tags };
     }
 
+    const axeStart = Date.now();
     const axeRaw = await page.evaluate(async (opts) => {
       const w = window as unknown as {
         axe?: {
@@ -168,10 +203,10 @@ export async function POST(req: NextRequest) {
         return await w.axe.run(document, { resultTypes: ["violations", "incomplete"] });
       }
     }, axeOpts);
+    const axeMs = Date.now() - axeStart;
 
     const violations = axeRaw.violations as import("axe-core").Result[];
-    const issues = normalizeAxeViolations(violations);
-    const summary = summarizeIssues(issues);
+    const axeIssues = normalizeAxeViolations(violations);
 
     const passes = (axeRaw as { passes?: import("axe-core").Result[] }).passes;
     const incomplete = (axeRaw as { incomplete?: import("axe-core").Result[] }).incomplete;
@@ -187,6 +222,19 @@ export async function POST(req: NextRequest) {
       kind: "needs_review",
     });
     const reviewIssues = reviewIssuesAll.slice(0, MAX_REVIEW_INSTANCES);
+
+    // Generate the KV scan id up front so it doubles as the IBM scan label.
+    // This id is independent of the SQLite `scan.id` (per-user history) and
+    // is what the diff endpoint keys on.
+    const kvScanId = randomUUID();
+
+    // Run IBM Equal Access in the same Puppeteer page. `runIbmChecker` is
+    // wrapped in try/catch internally and never throws, so axe results are
+    // always returned even when IBM is disabled or crashes (per the brief).
+    const ibmResult = await runIbmChecker(page, kvScanId);
+
+    const issues = mergeFindings(axeIssues, ibmResult.issues);
+    const summary = summarizeIssues(issues);
 
     let chromeAxSummary: ReturnType<typeof summarizeChromeAxTree> = null;
     try {
@@ -228,13 +276,33 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    return NextResponse.json({
+    // Persist to the URL-keyed Upstash store so the diff endpoint and any
+    // future caching layer can read it back. Fire-and-forget on purpose:
+    // a Redis outage must never block the scan response. `saveScan` is a
+    // no-op when Upstash credentials are missing.
+    const stored: StoredScanResult = {
+      scanId: kvScanId,
+      url: targetUrl,
+      scannedAt: new Date().toISOString(),
+      wcagPreset,
+      issues,
+      reviewIssues,
+      summary,
+      axeOverview,
+      sources: { axe: true, ibm: ibmResult.ran },
+    };
+    void saveScan(stored).catch((e) => {
+      console.error("[scan] saveScan failed:", e);
+    });
+
+    const responsePayload = {
       scannedUrl: targetUrl,
       issues,
       reviewIssues,
       summary,
       axeOverview,
       scanId: dbScanId,
+      kvScanId,
       meta: {
         violationRules: violations.length,
         issueInstances: issues.length,
@@ -251,9 +319,31 @@ export async function POST(req: NextRequest) {
             : "Scan ran without imported cookies; results may not reflect authenticated views."
           : undefined,
         runOnlyFallback: false,
-        engines: SCAN_ENGINE_INFO,
+        engines: {
+          axe: { ran: true, durationMs: axeMs, issueCount: axeIssues.length },
+          ibm: {
+            ran: ibmResult.ran,
+            durationMs: ibmResult.ms,
+            issueCount: ibmResult.issues.length,
+            ...(ibmResult.error ? { error: ibmResult.error } : {}),
+          },
+        },
+        engineCatalog: SCAN_ENGINE_INFO,
         chromeAxSummary,
       },
+    };
+
+    // Cache the merged response so the next request within the TTL window
+    // can short-circuit Chromium + IBM. Same fire-and-forget pattern as
+    // saveScan: a Redis outage must never delay the live response.
+    if (isSinglePage && cookiesToSet.length === 0) {
+      void setCachedScan(targetUrl, cacheOptions, responsePayload).catch((e) => {
+        console.error("[scan] setCachedScan failed:", e);
+      });
+    }
+
+    return NextResponse.json(responsePayload, {
+      headers: { "X-Cache": "MISS" },
     });
   } catch (err) {
     let message = err instanceof Error ? err.message : "Scan failed";

@@ -12,6 +12,11 @@ import {
   buildManualTestScenariosPrompt,
   manualTestScenariosSystemPrompt,
 } from "@/lib/testingScenariosPrompt";
+import {
+  anthropicTextStream,
+  geminiTextStream,
+  streamFromTextIterable,
+} from "@/lib/stream-response";
 
 /** AssemblyAI LLM Gateway model ids */
 const aaDefaultModel = process.env.ASSEMBLYAI_MODEL_DEFAULT ?? "claude-sonnet-4-5-20250929";
@@ -634,4 +639,149 @@ export async function generateManualTestScenarios(
     testCases = [];
   }
   return { testCases, model, raw: text };
+}
+
+/**
+ * Streaming sibling of `analyzeScanForTestingAgent` — returns a
+ * ReadableStream<Uint8Array> of raw markdown text deltas plus the resolved
+ * `model` id (set on the response header by the route handler).
+ *
+ * Provider selection follows the same rules as `runChatCompletion`:
+ *   - LLM_PROVIDER=gemini  -> Gemini stream (no in-stream fallback)
+ *   - LLM_PROVIDER=anthropic -> Anthropic stream
+ *   - default / assemblyai -> AssemblyAI non-streaming, emitted as one chunk
+ *
+ * Anthropic and Gemini emit incremental tokens; the AssemblyAI gateway is not
+ * documented as a streaming endpoint, so we call the existing non-streaming
+ * helper and push the whole result as a single chunk. From the route's and
+ * client's perspective everything is a `ReadableStream`, so the UI code stays
+ * uniform regardless of which provider answered.
+ *
+ * Caller passes `signal` from `req.signal` so disconnects propagate to the
+ * SDK abort hooks and we never leak an in-flight Anthropic request.
+ */
+export async function analyzeScanForTestingAgentStream(
+  scannedUrl: string,
+  issues: ScanIssue[],
+  mode: TestingAnalysisMode,
+  options: TestingAnalysisOptions = {},
+  signal?: AbortSignal,
+): Promise<{ stream: ReadableStream<Uint8Array>; model: string }> {
+  const { system, user } = buildTestingAnalysisMessages(scannedUrl, issues, mode, options);
+  const isExpert = mode === "expert-audit";
+  const max_tokens = mode === "comprehensive" || isExpert ? 8192 : 6144;
+
+  const provider = resolvedLlmProvider();
+  const messages: GatewayMessage[] = [
+    { role: "system", content: system },
+    { role: "user", content: user },
+  ];
+
+  if (provider === "anthropic") {
+    if (!hasAnthropicKey()) {
+      throw new Error(
+        "LLM_PROVIDER is anthropic but ANTHROPIC_API_KEY is missing. Add it from https://console.anthropic.com/ or use LLM_PROVIDER=gemini with GEMINI_API_KEY.",
+      );
+    }
+    const model = isExpert ? antOpusModel : antSonnetModel;
+    const client = getAnthropicClient();
+    const { system: sys, conversation } = splitSystemAndConversation(messages);
+    const iter = anthropicTextStream(client, {
+      model,
+      max_tokens,
+      ...(sys ? { system: sys } : {}),
+      messages: conversation,
+      ...(signal ? { signal } : {}),
+    });
+    return { stream: streamFromTextIterable(iter, { signal }), model };
+  }
+
+  if (provider === "gemini") {
+    if (!hasGeminiKey()) {
+      throw new Error(
+        "LLM_PROVIDER is gemini but GEMINI_API_KEY is missing. Create a key at https://aistudio.google.com/apikey or set LLM_PROVIDER to anthropic or assemblyai.",
+      );
+    }
+    const apiKey = process.env.GEMINI_API_KEY!.trim();
+    const model = isExpert ? gemCriticalModel : gemDefaultModel;
+    const { systemInstruction, dialogue } = splitSystemAndNonSystem(messages);
+    if (dialogue.length === 0) {
+      throw new Error("No user or assistant content to send to Gemini");
+    }
+    let turns = [...dialogue];
+    if (turns[turns.length - 1].role === "assistant") {
+      turns = [...turns, { role: "user" as const, content: "Please continue." }];
+    }
+    const lastUser = turns[turns.length - 1];
+    const prior = turns.slice(0, -1);
+    const history: Content[] = prior.map((m) => ({
+      role: m.role === "assistant" ? "model" : "user",
+      parts: [{ text: m.content }],
+    }));
+    const iter = geminiTextStream({
+      apiKey,
+      model,
+      ...(systemInstruction ? { systemInstruction } : {}),
+      history,
+      lastUserText: lastUser.content,
+      maxOutputTokens: max_tokens,
+    });
+    return { stream: streamFromTextIterable(iter, { signal }), model };
+  }
+
+  // AssemblyAI gateway: no streaming. Fall back to the non-streaming call and
+  // emit the whole result as one chunk so the route handler / client speak
+  // the same protocol regardless of provider. If AssemblyAI returns a
+  // gateway/access error and we have a streaming-capable key configured,
+  // hand off to that provider mid-call exactly like runChatCompletion does.
+  const assemblyModel = isExpert ? aaCriticalModel : aaDefaultModel;
+  try {
+    const { text, model } = await chatCompletionAssemblyAI({
+      model: assemblyModel,
+      messages,
+      max_tokens,
+    });
+    const single: AsyncIterable<string> = (async function* () {
+      yield text;
+    })();
+    return { stream: streamFromTextIterable(single, { signal }), model };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (isLemurOrAccessError(msg)) {
+      if (hasAnthropicKey()) {
+        const model = isExpert ? antOpusModel : antSonnetModel;
+        const client = getAnthropicClient();
+        const { system: sys, conversation } = splitSystemAndConversation(messages);
+        const iter = anthropicTextStream(client, {
+          model,
+          max_tokens,
+          ...(sys ? { system: sys } : {}),
+          messages: conversation,
+          ...(signal ? { signal } : {}),
+        });
+        return { stream: streamFromTextIterable(iter, { signal }), model };
+      }
+      if (hasGeminiKey()) {
+        const apiKey = process.env.GEMINI_API_KEY!.trim();
+        const model = isExpert ? gemCriticalModel : gemDefaultModel;
+        const { systemInstruction, dialogue } = splitSystemAndNonSystem(messages);
+        const lastUser = dialogue[dialogue.length - 1];
+        const prior = dialogue.slice(0, -1);
+        const history: Content[] = prior.map((m) => ({
+          role: m.role === "assistant" ? "model" : "user",
+          parts: [{ text: m.content }],
+        }));
+        const iter = geminiTextStream({
+          apiKey,
+          model,
+          ...(systemInstruction ? { systemInstruction } : {}),
+          history,
+          lastUserText: lastUser?.content ?? "",
+          maxOutputTokens: max_tokens,
+        });
+        return { stream: streamFromTextIterable(iter, { signal }), model };
+      }
+    }
+    throw e;
+  }
 }

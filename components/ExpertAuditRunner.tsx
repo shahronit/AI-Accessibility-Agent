@@ -18,7 +18,8 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import type { ScanIssue } from "@/lib/axeScanner";
-import { postAppJson, sanitizeIssueForApi } from "@/lib/clientApi";
+import { postAppStream, sanitizeIssueForApi } from "@/lib/clientApi";
+import { sanitiseHtml } from "@/lib/sanitise";
 import { exportTestingHubReportPdf } from "@/lib/exportReports";
 import {
   parseExpertAuditTickets,
@@ -178,6 +179,8 @@ export function ExpertAuditRunner({
   const [resolvedFormat, setResolvedFormat] = useState<ExpertAuditOutputFormat>("markdown");
   const [model, setModel] = useState<string | null>(null);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
+  /** Count of streamed markdown characters — drives the live progress chip. */
+  const [streamedChars, setStreamedChars] = useState(0);
 
   const [jiraPosting, setJiraPosting] = useState(false);
   const [jiraResults, setJiraResults] = useState<JiraResult[]>([]);
@@ -205,6 +208,7 @@ export function ExpertAuditRunner({
     setAnalysisError(null);
     setAnalysis(null);
     setModel(null);
+    setStreamedChars(0);
     setJiraResults([]);
     setJiraError(null);
 
@@ -240,12 +244,11 @@ export function ExpertAuditRunner({
 
     setPhase("analyzing");
     try {
-      const data = await postAppJson<{
-        analysis?: string;
-        model?: string;
-        outputFormat?: ExpertAuditOutputFormat;
-      }>(
-        "/api/ai-testing-analysis",
+      // Stream the audit body chunk-by-chunk so users see the report grow in
+      // real time. The route returns a plain text/plain stream; X-AI-Model and
+      // X-AI-Output-Format come back on response headers.
+      const result = await postAppStream(
+        "/api/ai-testing-analysis?stream=1",
         {
           scannedUrl: finalUrl,
           mode: "expert-audit",
@@ -253,13 +256,23 @@ export function ExpertAuditRunner({
           outputFormat,
           issues: list.map(sanitizeIssueForApi),
         },
-        { timeoutMs: 240_000 },
+        {
+          timeoutMs: 240_000,
+          onText: (delta) => {
+            setAnalysis((prev) => (prev ?? "") + delta);
+            setStreamedChars((n) => n + delta.length);
+          },
+        },
       );
-      setAnalysis(typeof data.analysis === "string" ? data.analysis : "");
-      setModel(typeof data.model === "string" ? data.model : null);
+
+      // Re-emit the assembled buffer through DOMPurify once the stream closes
+      // so the final state has the same defense-in-depth as the JSON path
+      // (Fix 3) — DOMPurify is a no-op on plain markdown.
+      setAnalysis(sanitiseHtml(result.full));
+      setModel(result.model);
       setResolvedFormat(
-        data.outputFormat === "json" || data.outputFormat === "jira"
-          ? data.outputFormat
+        result.outputFormat === "json" || result.outputFormat === "jira"
+          ? result.outputFormat
           : "markdown",
       );
     } catch (e) {
@@ -281,6 +294,7 @@ export function ExpertAuditRunner({
     setModel(null);
     setScanError(null);
     setAnalysisError(null);
+    setStreamedChars(0);
     setJiraResults([]);
     setJiraError(null);
   }, [busy, defaultUrl]);
@@ -461,9 +475,18 @@ export function ExpertAuditRunner({
           >
             <Loader2 className="text-primary mt-0.5 size-8 shrink-0 animate-spin" aria-hidden />
             <div className="min-w-0 space-y-1">
-              <p className="text-foreground font-medium">Generating expert audit…</p>
+              <p className="text-foreground font-medium">
+                Generating expert audit…
+                {streamedChars > 0 ? (
+                  <span className="text-muted-foreground ml-2 text-sm font-normal tabular-nums">
+                    {streamedChars.toLocaleString()} chars
+                  </span>
+                ) : null}
+              </p>
               <p className="text-muted-foreground text-sm leading-relaxed">
-                The model is reasoning through every WCAG criterion. Expert mode can take 1–3 minutes.
+                {streamedChars > 0
+                  ? "Streaming live from the model — the report below will keep growing until generation completes."
+                  : "The model is reasoning through every WCAG criterion. Expert mode can take 1–3 minutes."}
               </p>
             </div>
           </div>

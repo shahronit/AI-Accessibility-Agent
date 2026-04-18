@@ -7,6 +7,7 @@ import { useSession } from "next-auth/react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { RecentScansList } from "@/components/RecentScansList";
 import { clearScanHistory, loadScanHistory, type HistoryEntry } from "@/lib/scanHistory";
 
 function formatWhen(iso: string) {
@@ -66,10 +67,11 @@ export default function HistoryPage() {
 
   return (
     <div className="mx-auto max-w-4xl space-y-6 px-4 py-8">
+      {isAuthenticated ? <RecentScansList /> : null}
       <Card className="agent-card">
         <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3">
           <div>
-            <CardTitle className="text-lg">Saved scans</CardTitle>
+            <CardTitle className="text-lg">Saved on this device</CardTitle>
             <CardDescription>
               Websites you scanned on this device. Open one in the scanner anytime to run a new check.
             </CardDescription>

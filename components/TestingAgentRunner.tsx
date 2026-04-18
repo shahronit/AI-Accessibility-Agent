@@ -19,7 +19,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import type { ScanIssue } from "@/lib/axeScanner";
 import type { TestingAnalysisMode } from "@/lib/testingAnalysisPrompts";
-import { postAppJson, sanitizeIssueForApi } from "@/lib/clientApi";
+import { postAppJson, postAppStream, sanitizeIssueForApi } from "@/lib/clientApi";
+import { sanitiseHtml } from "@/lib/sanitise";
 import { exportTestingHubReportPdf } from "@/lib/exportReports";
 import { validateScanUrl } from "@/lib/url";
 import { cn } from "@/lib/utils";
@@ -64,6 +65,7 @@ export function TestingAgentRunner({
   const [analysis, setAnalysis] = useState<string | null>(null);
   const [model, setModel] = useState<string | null>(null);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
+  const [streamedChars, setStreamedChars] = useState(0);
 
   const busy = phase !== "idle";
 
@@ -77,6 +79,7 @@ export function TestingAgentRunner({
     setAnalysisError(null);
     setAnalysis(null);
     setModel(null);
+    setStreamedChars(0);
 
     let list: ScanIssue[] = [];
     let finalUrl = v.url;
@@ -113,17 +116,42 @@ export function TestingAgentRunner({
     const timeoutMs = mode === "comprehensive" ? 180_000 : 150_000;
     setPhase("analyzing");
     try {
-      const aiData = await postAppJson<{ analysis?: string; model?: string }>(
-        "/api/ai-testing-analysis",
-        {
-          scannedUrl: finalUrl,
-          mode,
-          issues: list.map(sanitizeIssueForApi),
-        },
-        { timeoutMs },
-      );
-      setAnalysis(typeof aiData.analysis === "string" ? aiData.analysis : "");
-      setModel(typeof aiData.model === "string" ? aiData.model : null);
+      // Comprehensive mode is the only path through this runner that can
+      // benefit from token streaming (pour / methods / checkpoints return
+      // 1–2 KB of markdown in well under 10 s and aren't worth the extra
+      // wiring). Other modes stay on the JSON path for backwards
+      // compatibility with their post-processors.
+      if (mode === "comprehensive") {
+        const result = await postAppStream(
+          "/api/ai-testing-analysis?stream=1",
+          {
+            scannedUrl: finalUrl,
+            mode,
+            issues: list.map(sanitizeIssueForApi),
+          },
+          {
+            timeoutMs,
+            onText: (delta) => {
+              setAnalysis((prev) => (prev ?? "") + delta);
+              setStreamedChars((n) => n + delta.length);
+            },
+          },
+        );
+        setAnalysis(sanitiseHtml(result.full));
+        setModel(result.model);
+      } else {
+        const aiData = await postAppJson<{ analysis?: string; model?: string }>(
+          "/api/ai-testing-analysis",
+          {
+            scannedUrl: finalUrl,
+            mode,
+            issues: list.map(sanitizeIssueForApi),
+          },
+          { timeoutMs },
+        );
+        setAnalysis(typeof aiData.analysis === "string" ? aiData.analysis : "");
+        setModel(typeof aiData.model === "string" ? aiData.model : null);
+      }
     } catch (e) {
       setAnalysisError(e instanceof Error ? e.message : "Analysis failed");
     } finally {
@@ -140,6 +168,7 @@ export function TestingAgentRunner({
     setModel(null);
     setScanError(null);
     setAnalysisError(null);
+    setStreamedChars(0);
   }, [busy, defaultUrl]);
 
   return (
@@ -239,9 +268,18 @@ export function TestingAgentRunner({
           >
             <Loader2 className="text-primary mt-0.5 size-8 shrink-0 animate-spin" aria-hidden />
             <div className="min-w-0 space-y-1">
-              <p className="text-foreground font-medium">Generating report…</p>
+              <p className="text-foreground font-medium">
+                Generating report…
+                {streamedChars > 0 ? (
+                  <span className="text-muted-foreground ml-2 text-sm font-normal tabular-nums">
+                    {streamedChars.toLocaleString()} chars
+                  </span>
+                ) : null}
+              </p>
               <p className="text-muted-foreground text-sm leading-relaxed">
-                The model is reviewing scan results. Comprehensive mode may take several minutes.
+                {streamedChars > 0
+                  ? "Streaming live from the model — the report below will keep growing until generation completes."
+                  : "The model is reviewing scan results. Comprehensive mode may take several minutes."}
               </p>
             </div>
           </div>

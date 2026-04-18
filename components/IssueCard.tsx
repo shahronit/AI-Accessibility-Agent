@@ -87,6 +87,23 @@ export function IssueCard({
               Needs review
             </Badge>
           ) : null}
+          {issue.source === "both" ? (
+            <Badge
+              variant="default"
+              className="border-primary/40 bg-primary/15 text-primary-foreground"
+              title="Flagged by both axe-core and IBM Equal Access — severity bumped one rung"
+            >
+              axe + IBM
+            </Badge>
+          ) : issue.source === "ibm" ? (
+            <Badge
+              variant="outline"
+              className="border-sky-500/45 bg-sky-500/10 text-sky-100"
+              title="Flagged by IBM Equal Access"
+            >
+              IBM
+            </Badge>
+          ) : null}
           <span className="text-primary/90 font-mono text-sm tracking-tight">{issue.id}</span>
         </div>
         <div className="flex flex-wrap items-center gap-1.5">

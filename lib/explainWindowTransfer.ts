@@ -20,6 +20,15 @@ export type ExplainWindowPayloadV1 = {
   scanSummary: ExplainWindowScanSummary | null;
   issue: ScanIssue | null;
   prefillChat: string | null;
+  /**
+   * Fix 6 - pre-fetched explanation text for `mode === "issue"` payloads.
+   * When present, the explain workspace skips the live `/api/ai-explain`
+   * call and renders the cached text immediately. Always already
+   * sanitised by the server before it lands here.
+   */
+  prefetchedExplanation?: string | null;
+  /** Provider model id matching `prefetchedExplanation` (e.g. "claude-sonnet-4-5"). */
+  prefetchedExplanationModel?: string | null;
 };
 
 function isScanIssue(value: unknown): value is ScanIssue {
@@ -70,6 +79,14 @@ function parsePayload(raw: string): ExplainWindowPayloadV1 | null {
     const scanSummary = normalizeScanSummary(o.scanSummary);
     const issue = o.issue != null && isScanIssue(o.issue) ? o.issue : null;
     const prefillChat = typeof o.prefillChat === "string" ? o.prefillChat : null;
+    const prefetchedExplanation =
+      typeof o.prefetchedExplanation === "string" && o.prefetchedExplanation.length > 0
+        ? o.prefetchedExplanation
+        : null;
+    const prefetchedExplanationModel =
+      typeof o.prefetchedExplanationModel === "string" && o.prefetchedExplanationModel.length > 0
+        ? o.prefetchedExplanationModel
+        : null;
     if (mode === "issue" && !issue) return null;
     if (mode === "chatOnly" && (!scanSummary || scanSummary.total <= 0)) return null;
     return {
@@ -80,6 +97,8 @@ function parsePayload(raw: string): ExplainWindowPayloadV1 | null {
       scanSummary,
       issue,
       prefillChat,
+      prefetchedExplanation,
+      prefetchedExplanationModel,
     };
   } catch {
     return null;
@@ -92,6 +111,8 @@ export function writeExplainWindowPayload(input: {
   scanSummary: ExplainWindowScanSummary | null;
   issue: ScanIssue | null;
   prefillChat?: string | null;
+  prefetchedExplanation?: string | null;
+  prefetchedExplanationModel?: string | null;
 }): void {
   if (typeof window === "undefined") return;
   const payload: ExplainWindowPayloadV1 = {
@@ -102,6 +123,8 @@ export function writeExplainWindowPayload(input: {
     scanSummary: input.scanSummary,
     issue: input.issue,
     prefillChat: input.prefillChat ?? null,
+    prefetchedExplanation: input.prefetchedExplanation ?? null,
+    prefetchedExplanationModel: input.prefetchedExplanationModel ?? null,
   };
   try {
     localStorage.setItem(EXPLAIN_WINDOW_STORAGE_KEY, JSON.stringify(payload));

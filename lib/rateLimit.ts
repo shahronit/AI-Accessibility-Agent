@@ -1,75 +1,113 @@
 import { NextResponse } from "next/server";
+import { Ratelimit } from "@upstash/ratelimit";
+import { getRedis } from "@/lib/upstash";
 
-interface RateLimitEntry {
-  count: number;
-  resetAt: number;
+/**
+ * Per-IP sliding-window rate limiting backed by Upstash Redis.
+ *
+ * Tiers (per IP, per rolling 1h window):
+ *   - scanLimiter: 10/h  → /api/scan, /api/scan/batch
+ *   - aiLimiter:   50/h  → /api/ai-explain, /api/ai-testing-analysis, /api/testing-scenarios
+ *   - chatLimiter: 30/h  → /api/chat
+ *
+ * Local dev (UPSTASH_REDIS_REST_URL or UPSTASH_REDIS_REST_TOKEN unset):
+ * the shared `getRedis()` helper logs a single warning and returns null;
+ * `enforceRateLimit` then returns null so requests pass through unmetered.
+ * Production deploys (Vercel, Render, etc.) MUST set both env vars or rate
+ * limiting is silently disabled.
+ */
+
+/**
+ * Build a sliding-window limiter lazily. We can't construct `Ratelimit` at
+ * module-load time because it needs a Redis instance, and Redis can't be built
+ * without env vars (which may not exist in local dev). Each call returns either
+ * a working `Ratelimit` or `null` when env vars are missing.
+ */
+function buildLimiter(prefix: string, max: number): () => Ratelimit | null {
+  let cached: Ratelimit | null = null;
+  return () => {
+    if (cached) return cached;
+    const redis = getRedis();
+    if (!redis) return null;
+    cached = new Ratelimit({
+      redis,
+      limiter: Ratelimit.slidingWindow(max, "1 h"),
+      prefix: `a11yagent:${prefix}`,
+      analytics: false,
+    });
+    return cached;
+  };
 }
 
-const buckets = new Map<string, RateLimitEntry>();
+const scanLimiterFactory = buildLimiter("scan", 10);
+const aiLimiterFactory = buildLimiter("ai", 50);
+const chatLimiterFactory = buildLimiter("chat", 30);
 
-const CLEANUP_INTERVAL = 60_000;
-let lastCleanup = Date.now();
+export type LimiterId = "scan" | "ai" | "chat";
 
-function cleanup() {
-  const now = Date.now();
-  if (now - lastCleanup < CLEANUP_INTERVAL) return;
-  lastCleanup = now;
-  for (const [key, entry] of buckets) {
-    if (entry.resetAt <= now) buckets.delete(key);
+const factories: Record<LimiterId, () => Ratelimit | null> = {
+  scan: scanLimiterFactory,
+  ai: aiLimiterFactory,
+  chat: chatLimiterFactory,
+};
+
+/** Public limiter handles consumed by API routes. */
+export const scanLimiter: LimiterId = "scan";
+export const aiLimiter: LimiterId = "ai";
+export const chatLimiter: LimiterId = "chat";
+
+/**
+ * Extract a stable client identifier for rate-limit bucketing.
+ * Order: x-forwarded-for (first hop) → x-real-ip → "anonymous".
+ *
+ * Note: in untrusted networks `x-forwarded-for` is spoofable. Vercel/Render
+ * rewrite the header to the real client IP before our handler runs, so this
+ * is safe in production.
+ */
+export function getClientIp(req: Request): string {
+  const forwarded = req.headers.get("x-forwarded-for");
+  if (forwarded) {
+    const first = forwarded.split(",")[0]?.trim();
+    if (first) return first;
   }
-}
-
-export interface RateLimitConfig {
-  /** Unique namespace for this limiter (e.g. "scan", "auth") */
-  prefix: string;
-  /** Window duration in milliseconds */
-  windowMs: number;
-  /** Max requests per window */
-  max: number;
-}
-
-export const RATE_LIMITS = {
-  general: { prefix: "gen", windowMs: 15 * 60_000, max: 100 } satisfies RateLimitConfig,
-  scan: { prefix: "scan", windowMs: 15 * 60_000, max: 5 } satisfies RateLimitConfig,
-  auth: { prefix: "auth", windowMs: 15 * 60_000, max: 20 } satisfies RateLimitConfig,
-} as const;
-
-function getClientKey(request: Request): string {
-  const forwarded = request.headers.get("x-forwarded-for");
-  if (forwarded) return forwarded.split(",")[0].trim();
-  return "unknown";
+  const real = req.headers.get("x-real-ip");
+  if (real) return real.trim();
+  return "anonymous";
 }
 
 /**
- * Check rate limit. Returns null if allowed, or a NextResponse 429 if exceeded.
+ * Run the rate-limit check at the top of an API handler.
+ *
+ * Returns `null` when the request is allowed (or when rate limiting is
+ * disabled because env vars are unset). Returns a 429 `NextResponse` with
+ * `Retry-After` header + `{ error, retryAfter }` body when the IP is over
+ * its budget for the chosen limiter.
  */
-export function checkRateLimit(
-  request: Request,
-  config: RateLimitConfig,
-): NextResponse | null {
-  cleanup();
+export async function enforceRateLimit(
+  req: Request,
+  limiterId: LimiterId,
+): Promise<NextResponse | null> {
+  const limiter = factories[limiterId]();
+  if (!limiter) return null;
 
-  const ip = getClientKey(request);
-  const key = `${config.prefix}:${ip}`;
-  const now = Date.now();
+  const ip = getClientIp(req);
+  const result = await limiter.limit(ip);
 
-  const entry = buckets.get(key);
-  if (!entry || entry.resetAt <= now) {
-    buckets.set(key, { count: 1, resetAt: now + config.windowMs });
-    return null;
-  }
+  if (result.success) return null;
 
-  entry.count++;
-  if (entry.count > config.max) {
-    const retryAfter = Math.ceil((entry.resetAt - now) / 1000);
-    return NextResponse.json(
-      { error: "Too many requests. Please try again later." },
-      {
-        status: 429,
-        headers: { "Retry-After": String(retryAfter) },
+  const retryAfterMs = Math.max(0, result.reset - Date.now());
+  const retryAfter = Math.ceil(retryAfterMs / 1000);
+
+  return NextResponse.json(
+    { error: "Rate limit exceeded", retryAfter },
+    {
+      status: 429,
+      headers: {
+        "Retry-After": String(retryAfter),
+        "X-RateLimit-Limit": String(result.limit),
+        "X-RateLimit-Remaining": String(result.remaining),
+        "X-RateLimit-Reset": String(Math.ceil(result.reset / 1000)),
       },
-    );
-  }
-
-  return null;
+    },
+  );
 }
