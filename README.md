@@ -51,6 +51,23 @@ On **macOS/Windows**, scans use your **installed Chromium-based browser** (macOS
 - **Sign-in / gated pages:** **New scan** supports **Sign-in prep** (open/copy URL) and optional **cookie import** (JSON array, only with *Page may need a sign-in*) so **`POST /api/scan`** can run headless Chrome with `setCookie` before navigation. See **[ARCHITECTURE.md](./ARCHITECTURE.md)**.
 - `POST /api/ai-explain` — `{ "issue": { ...ScanIssue } }` → `{ explanation, model }`.
 - `POST /api/chat` — `{ "messages": [{role, content}], "scanSummary"?: {...} }` → `{ reply, model }`.
+- `POST /api/ai-testing-analysis` — `{ scannedUrl, mode, issues[], priority?, outputFormat? }` → `{ analysis, model, mode, priority, outputFormat }`. `mode` is one of `pour`, `methods`, `checkpoints`, `comprehensive`, **`expert-audit`**. The `priority` (`aa` | `aa-aaa`) and `outputFormat` (`markdown` | `json` | `jira`) fields apply to **`expert-audit`**.
+- `POST /api/testing-scenarios` — manual QA scenarios from the latest scan (used by the Testing Scenarios runner).
+- `POST /api/jira-issue` — single Jira ticket from a finding (mock-mode when `JIRA_*` env vars are unset).
+- `POST /api/jira-test-plan` — Jira test plan from selected manual scenarios.
+
+## AI Testing Hub (`/testing`)
+
+The dashboard at **`/testing`** turns axe results into AI-written reports. Each card runs the same scan pipeline and then a different analysis mode:
+
+| Page | Mode | What it produces |
+|------|------|------------------|
+| `/testing/ai-report` | `comprehensive` | One integrated report mapped to WCAG / WebAIM / Quickref themes. |
+| `/testing/pour` | `pour` | Findings grouped by Perceivable / Operable / Understandable / Robust. |
+| `/testing/methods` | `methods` | Automation coverage + manual + user-research plan. |
+| `/testing/checkpoints` | `checkpoints` | High-signal verification buckets with per-bucket findings. |
+| `/testing/scenarios` | (`POST /api/testing-scenarios`) | Manual test cases, exportable as a Jira Test issue. |
+| **`/testing/expert-audit`** | **`expert-audit`** | **Senior-QA / CPACC-style audit across WCAG 2.1 AA + 2.2 AA (1.1.1, 1.3.x, 1.4.x, 2.1.x, 2.4.x, 3.1.1, 3.2.x, 3.3.x, 4.1.x, plus 2.4.11, 2.5.3, 3.2.6, 3.3.7) with severity (CRITICAL / SERIOUS / MODERATE / MINOR), before/after fix snippets, technique IDs (H37, G18, ARIA6 …), and a choice of Markdown report, downloadable JSON, or Markdown + bulk Jira-ticket creation.** Toggle **Priority** (AA only / AA + AAA where feasible) and **Output format** in the runner. The Jira output reuses `/api/jira-issue` so it works in mock mode when Jira credentials are unset.
 
 ## Hydration / voice UI
 

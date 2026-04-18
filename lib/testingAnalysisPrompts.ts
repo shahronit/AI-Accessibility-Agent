@@ -1,8 +1,25 @@
 import type { ScanIssue } from "@/lib/axeScanner";
+import {
+  EXPERT_AUDIT_JIRA_TICKETS_SCHEMA_LITERAL,
+  EXPERT_AUDIT_JSON_SCHEMA_LITERAL,
+} from "@/lib/expertAuditSchema";
 import { TESTING_NORMATIVE_BASIS } from "@/lib/testingNorms";
 import { encodeStructuredForLlm, FINDINGS_TOON_HEADER } from "@/lib/toonEncode";
 
-export type TestingAnalysisMode = "pour" | "methods" | "checkpoints" | "comprehensive";
+export type TestingAnalysisMode =
+  | "pour"
+  | "methods"
+  | "checkpoints"
+  | "comprehensive"
+  | "expert-audit";
+
+export type ExpertAuditPriority = "aa" | "aa-aaa";
+export type ExpertAuditOutputFormat = "markdown" | "json" | "jira";
+
+export type TestingAnalysisOptions = {
+  priority?: ExpertAuditPriority;
+  outputFormat?: ExpertAuditOutputFormat;
+};
 
 const BASE_AGENT = `You are **A11yAgent**, an accessibility AI agent. You receive the **complete** list of automated findings from an axe-core scan (every violation detected for the page—not a single-issue sample). Findings in the user message use **TOON** (Token-Oriented Object Notation), not JSON—read tabular headers and row delimiters as the schema. Your job is to analyze **all** findings together in relation to the requested framework. Reference specific rule IDs and issue indices from the data. If many issues share a theme, group them. Do not pretend only one issue exists.
 
@@ -39,8 +56,12 @@ export function buildTestingAnalysisMessages(
   scannedUrl: string,
   issues: ScanIssue[],
   mode: TestingAnalysisMode,
+  options: TestingAnalysisOptions = {},
 ): { system: string; user: string } {
   if (issues.length === 0) {
+    if (mode === "expert-audit") {
+      return buildExpertAuditMessages(scannedUrl, [], options);
+    }
     const system = `${BASE_AGENT}
 
 ${OUTPUT_RULES}
@@ -169,6 +190,10 @@ ${findingsToon}`;
     return { system, user };
   }
 
+  if (mode === "expert-audit") {
+    return buildExpertAuditMessages(scannedUrl, issues, options);
+  }
+
   // comprehensive
   const system = `${BASE_AGENT}
 
@@ -185,6 +210,171 @@ Produce one integrated report aligned to **WebAIM WCAG 2 checklist + W3C Quickre
 Use ## headings and tables. Never analyze only one issue unless the scan truly contains one.`;
 
   const user = `${intro}
+
+${FINDINGS_TOON_HEADER}:
+${findingsToon}`;
+
+  return { system, user };
+}
+
+/* -------------------------------------------------------------------------- */
+/*                            Expert WCAG audit mode                          */
+/* -------------------------------------------------------------------------- */
+
+const EXPERT_AGENT_ROLE = `You are an expert AI accessibility testing agent with deep knowledge of WCAG 2.1, WCAG 2.2, WAI-ARIA 1.2, Section 508, and assistive technologies (NVDA, JAWS, VoiceOver, TalkBack). You think like a senior QA engineer who is also a certified CPACC.`;
+
+const EXPERT_TASK = `Audit the provided web screen or component for accessibility violations across all WCAG 2.1 AA and WCAG 2.2 AA success criteria including: 1.1.1, 1.3.1, 1.3.2, 1.3.3, 1.4.1, 1.4.3, 1.4.4, 1.4.10, 1.4.11, 2.1.1, 2.1.2, 2.4.1, 2.4.2, 2.4.3, 2.4.4, 2.4.6, 2.4.7, 3.1.1, 3.2.1, 3.3.1, 3.3.2, 4.1.1, 4.1.2, 4.1.3, 2.4.11, 2.5.3, 3.2.6, 3.3.7.`;
+
+const EXPERT_REASONING_CHAIN = `REASONING CHAIN (follow for every screen)
+Step 1 — PARSE: Extract DOM structure, ARIA roles, labels, tabindex, heading hierarchy, colour values, font sizes, focus indicators from the supplied axe findings (each finding includes the offending HTML snippet, rule id, impact, and failure summary).
+Step 2 — MAP: Map each element to applicable WCAG criteria.
+Step 3 — TEST: For each criterion determine PASS / FAIL / MANUAL VERIFICATION with exact reason. Never mark uncertain items as PASS — use MANUAL VERIFICATION instead.
+Step 4 — SEVERITY: Rate each failure as CRITICAL / SERIOUS / MODERATE / MINOR.
+Step 5 — REMEDIATE: Provide exact before/after code fix, WCAG reference, and effort estimate.`;
+
+const EXPERT_CONSTRAINTS = `CONSTRAINTS
+- Never skip a criterion without justification.
+- Always calculate contrast ratios using the WCAG luminance formula when colour values are present in the snippet; otherwise list the contrast check under MANUAL VERIFICATION.
+- Never mark uncertain items as PASS.
+- Always give concrete fix code (real HTML/CSS/ARIA — not "TBD" or pseudocode).
+- Reference WCAG criterion numbers AND technique IDs (H37, G18, ARIA6, F77, etc.) for every finding.
+- Test all interactive states implied by the markup: default, hover, focus, active, disabled, error.
+- Group near-duplicate findings (same rule, same root cause) into a single numbered finding with multiple locations rather than repeating yourself.`;
+
+const EXPERT_MARKDOWN_OUTPUT = `OUTPUT FORMAT (Markdown report — produce in this order, no extra preamble):
+
+## Executive summary
+2–4 sentences covering scope, total findings, and the highest-risk themes.
+
+## Metrics
+A pipe table with columns: | Metric | Value | covering at least: Total findings, Critical, Serious, Moderate, Minor, Criteria evaluated, Criteria passing, Criteria failing, Criteria needing manual verification.
+
+## Findings
+A numbered list. Each finding MUST use this exact sub-structure:
+
+### Finding {n} — WCAG {criterion} ({severity})
+- **Verdict:** FAIL | MANUAL VERIFICATION
+- **Technique IDs:** comma-separated WCAG technique IDs (e.g. H37, G18, ARIA6)
+- **Location:** CSS selector or human-readable element location
+- **Description:** what is wrong and why it violates the criterion
+- **User impact:** concrete description of what real users (including AT users) experience
+- **Effort:** Small (<1 h) | Medium (1–4 h) | Large (>4 h) — include rough hours
+
+**Before:**
+\`\`\`html
+<!-- verbatim broken markup -->
+\`\`\`
+
+**After:**
+\`\`\`html
+<!-- verbatim fix -->
+\`\`\`
+
+## Manual verification
+A bulleted list of items that automation cannot decisively prove (e.g. screen-reader announcement quality, reading order in custom widgets, motion/animation triggers). One actionable line per item.
+
+## Passed criteria
+A bulleted list of WCAG SC numbers (e.g. \`1.3.1\`, \`2.4.2\`) for which the evidence in the findings supports a PASS. If you have no evidence either way, do NOT list the criterion here — surface it under Manual verification instead.`;
+
+function expertJsonOutputBlock(): string {
+  return `OUTPUT FORMAT (JSON only — no prose, no markdown headers, no explanation):
+
+Return ONE fenced \`\`\`json\`\`\` code block (and nothing else) that conforms to this shape. Field names and casing are mandatory. Use empty arrays / empty strings rather than omitting required keys. Severity values MUST be one of CRITICAL, SERIOUS, MODERATE, MINOR. Verdict values MUST be one of FAIL, MANUAL VERIFICATION (do not emit PASS at the finding level — list passing criteria under \`passedCriteria\`).
+
+\`\`\`json
+${EXPERT_AUDIT_JSON_SCHEMA_LITERAL}
+\`\`\``;
+}
+
+function expertJiraOutputBlock(): string {
+  return `OUTPUT FORMAT (Markdown report + Jira tickets):
+
+First produce the full Markdown report exactly as specified in the OUTPUT FORMAT (Markdown report) block.
+
+Then, AFTER the report, append a single fenced \`\`\`json\`\`\` code block whose body matches this shape — one ticket per distinct finding (group near-duplicate findings into one ticket):
+
+\`\`\`json
+${EXPERT_AUDIT_JIRA_TICKETS_SCHEMA_LITERAL}
+\`\`\`
+
+Each ticket.summary MUST start with \`[A11y]\` and reference the WCAG criterion (e.g. \`[A11y] 1.4.3 — Insufficient contrast on primary CTA\`). Each ticket.description MUST include: WCAG criterion + technique IDs, severity, location, plain-language user impact, and the proposed fix snippet. Keep \`html\` ≤ 2000 characters.`;
+}
+
+function expertOutputForFormat(format: ExpertAuditOutputFormat): string {
+  if (format === "json") return expertJsonOutputBlock();
+  if (format === "jira") return `${EXPERT_MARKDOWN_OUTPUT}
+
+${expertJiraOutputBlock()}`;
+  return EXPERT_MARKDOWN_OUTPUT;
+}
+
+function expertPriorityClause(priority: ExpertAuditPriority): string {
+  if (priority === "aa-aaa") {
+    return `PRIORITY: WCAG 2.1 / 2.2 **AA** is the minimum bar. Where the evidence in the findings or supplied HTML clearly indicates an AAA issue (e.g. 1.4.6 enhanced contrast, 2.4.9 link purpose alone, 3.1.5 reading level), include it as a FINDING with severity proportional to user impact. When AAA-level evidence is ambiguous, list the AAA criterion under **Manual verification** rather than asserting PASS.`;
+  }
+  return `PRIORITY: WCAG 2.1 / 2.2 **AA** only. Do not invent AAA findings. If you happen to notice an AAA-only concern, mention it briefly under **Manual verification** but do not count it in the metrics or numbered findings.`;
+}
+
+function expertIssuesPayload(issues: ScanIssue[], max = 80) {
+  const slice = issues.slice(0, max);
+  return slice.map((i) => ({
+    index: i.index,
+    id: i.id,
+    impact: i.impact,
+    description: i.description,
+    helpUrl: i.helpUrl,
+    htmlSnippet: i.html.slice(0, 1200),
+    failureSummary: i.failureSummary?.slice(0, 500) ?? null,
+  }));
+}
+
+function buildExpertAuditMessages(
+  scannedUrl: string,
+  issues: ScanIssue[],
+  options: TestingAnalysisOptions,
+): { system: string; user: string } {
+  const priority: ExpertAuditPriority = options.priority === "aa-aaa" ? "aa-aaa" : "aa";
+  const outputFormat: ExpertAuditOutputFormat =
+    options.outputFormat === "json" || options.outputFormat === "jira"
+      ? options.outputFormat
+      : "markdown";
+
+  const system = `${EXPERT_AGENT_ROLE}
+
+${EXPERT_TASK}
+
+${expertPriorityClause(priority)}
+
+${EXPERT_REASONING_CHAIN}
+
+${EXPERT_CONSTRAINTS}
+
+${expertOutputForFormat(outputFormat)}
+
+INPUT NOTES
+- The user message contains the scan URL plus axe-core findings encoded as **TOON** (Token-Oriented Object Notation). Read tabular headers and row delimiters as the schema.
+- Treat each finding's \`htmlSnippet\` as ground truth for the offending element. You may infer additional WCAG criteria from the snippet that axe did not flag — surface those as additional findings.
+- If the scan returned **zero** findings, do NOT fabricate violations. Produce the report skeleton with \`Total findings: 0\`, an empty Findings section ("No automated violations were detected."), and a thorough **Manual verification** list covering the criteria listed in the TASK above.`;
+
+  if (issues.length === 0) {
+    const user = `Scanned URL: ${scannedUrl}
+Total automated findings: 0
+No findings payload.`;
+    return { system, user };
+  }
+
+  const cap = 80;
+  const capped = issues.slice(0, cap);
+  const payload = expertIssuesPayload(issues, cap);
+  const findingsToon = encodeStructuredForLlm(payload);
+  const tail =
+    issues.length > capped.length
+      ? `\n\nNote: ${issues.length - capped.length} additional findings were omitted from this payload for size; mention that the live scan had ${issues.length} total in the Executive summary.`
+      : "";
+
+  const user = `Scanned URL: ${scannedUrl}
+Total automated findings in this scan: ${issues.length}
+Below is **TOON** (Token-Oriented Object Notation) for ${capped.length} findings — the same fields as JSON would carry, in a compact tabular layout.${tail}
 
 ${FINDINGS_TOON_HEADER}:
 ${findingsToon}`;

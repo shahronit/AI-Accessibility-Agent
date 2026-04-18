@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ClipboardCheck, ClipboardList, Layers, Sparkles, Workflow } from "lucide-react";
+import { ClipboardCheck, ClipboardList, Layers, ShieldCheck, Sparkles, Workflow } from "lucide-react";
 import { TestingHero } from "@/components/TestingHero";
 import { cn } from "@/lib/utils";
 
@@ -46,6 +46,14 @@ const quickLinks = [
       "What automation covered, what to verify yourself or with a screen reader, and ideas for testing with real people.",
     icon: Workflow,
     iconWrap: "bg-cyan-500/15 text-cyan-300",
+  },
+  {
+    href: "/testing/expert-audit",
+    title: "Expert WCAG audit",
+    description:
+      "Senior-QA / CPACC-style audit with severity ratings, before/after fix code, technique IDs, and Markdown / JSON / Jira-ready output.",
+    icon: ShieldCheck,
+    iconWrap: "bg-rose-500/15 text-rose-300",
   },
 ] as const;
 

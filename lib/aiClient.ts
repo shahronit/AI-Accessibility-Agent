@@ -6,6 +6,7 @@ import { parseManualTestCasesJson, type ManualTestCase } from "@/lib/manualTestS
 import {
   buildTestingAnalysisMessages,
   type TestingAnalysisMode,
+  type TestingAnalysisOptions,
 } from "@/lib/testingAnalysisPrompts";
 import {
   buildManualTestScenariosPrompt,
@@ -580,20 +581,27 @@ export async function chatWithContext(
   });
 }
 
-export type { TestingAnalysisMode } from "@/lib/testingAnalysisPrompts";
+export type {
+  TestingAnalysisMode,
+  TestingAnalysisOptions,
+  ExpertAuditPriority,
+  ExpertAuditOutputFormat,
+} from "@/lib/testingAnalysisPrompts";
 
-/** Full-scan testing report: core principles, testing plan, essential checks, or comprehensive. */
+/** Full-scan testing report: core principles, testing plan, essential checks, comprehensive, or expert-audit. */
 export async function analyzeScanForTestingAgent(
   scannedUrl: string,
   issues: ScanIssue[],
   mode: TestingAnalysisMode,
+  options: TestingAnalysisOptions = {},
 ): Promise<{ text: string; model: string }> {
-  const { system, user } = buildTestingAnalysisMessages(scannedUrl, issues, mode);
-  const max_tokens = mode === "comprehensive" ? 8192 : 6144;
+  const { system, user } = buildTestingAnalysisMessages(scannedUrl, issues, mode, options);
+  const isExpert = mode === "expert-audit";
+  const max_tokens = mode === "comprehensive" || isExpert ? 8192 : 6144;
   return runChatCompletion({
-    assemblyModel: aaDefaultModel,
-    anthropicModel: antSonnetModel,
-    geminiModel: gemDefaultModel,
+    assemblyModel: isExpert ? aaCriticalModel : aaDefaultModel,
+    anthropicModel: isExpert ? antOpusModel : antSonnetModel,
+    geminiModel: isExpert ? gemCriticalModel : gemDefaultModel,
     max_tokens,
     messages: [
       { role: "system", content: system },
