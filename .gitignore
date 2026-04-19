@@ -43,3 +43,6 @@ next-env.d.ts
 
 # SQLite database
 /data/
+
+# IBM Equal Access (accessibility-checker) per-scan dumps
+/results/
