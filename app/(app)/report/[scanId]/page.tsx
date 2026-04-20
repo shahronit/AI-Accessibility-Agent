@@ -1,10 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, RefreshCw } from "lucide-react";
-import { auth } from "@/auth";
 import { ScanFindingsReport } from "@/components/ScanFindingsReport";
 import { ShareLinkButton } from "@/components/ShareLinkButton";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { ScanIssue } from "@/lib/axeScanner";
@@ -16,9 +15,7 @@ export const dynamic = "force-dynamic";
 
 /**
  * Fix 7 - shareable, server-rendered scan report fetched from the Upstash
- * `scan:id:{id}` bucket. Auth-gated like `/api/scan-history` because the
- * KV store is not user-scoped and could expose URLs scanned by other
- * tenants. 404s when:
+ * `scan:id:{id}` bucket. Open page (guest-default app); 404s when:
  *   - the scanId has expired (30-day TTL on the body)
  *   - Upstash is not configured (KV reads return null in dev)
  *   - the param is malformed.
@@ -41,34 +38,6 @@ function mergeViolationsAndReview(violations: ScanIssue[], review: ScanIssue[]):
 type Params = { scanId: string };
 
 export default async function ReportByIdPage({ params }: { params: Promise<Params> }) {
-  const session = await auth();
-  if (!session?.user?.id) {
-    // Push the user to sign-in and bring them back to this exact report.
-    const { scanId } = await params;
-    const callback = encodeURIComponent(`/report/${scanId}`);
-    return (
-      <div className="mx-auto max-w-2xl space-y-4 px-4 py-12">
-        <Card className="agent-card">
-          <CardHeader>
-            <CardTitle className="text-lg">Sign in to view this report</CardTitle>
-            <CardDescription>
-              Reports are stored in your team&apos;s shared Upstash store and require an account
-              to view.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Link
-              href={`/signin?callbackUrl=${callback}`}
-              className={cn(buttonVariants({ variant: "default" }))}
-            >
-              Sign in
-            </Link>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
   const { scanId } = await params;
   if (!scanId || scanId.length > 128) notFound();
 

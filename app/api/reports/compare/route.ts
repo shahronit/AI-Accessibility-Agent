@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { getCurrentUserId } from "@/lib/currentUser";
 import { getScanById, getScanPages } from "@/lib/db";
 
 interface ViolationSummary {
@@ -35,11 +35,7 @@ function extractViolationRules(pages: { results_json: string | null }[]): Violat
 }
 
 export async function GET(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Authentication required" }, { status: 401 });
-  }
-  const userId = session.user.id;
+  const userId = await getCurrentUserId();
 
   const { searchParams } = new URL(req.url);
   const scanAId = searchParams.get("scanA");

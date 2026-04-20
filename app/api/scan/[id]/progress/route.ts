@@ -1,4 +1,4 @@
-import { auth } from "@/auth";
+import { getCurrentUserId } from "@/lib/currentUser";
 import { getScanById } from "@/lib/db";
 import { getScanProgress } from "../../route";
 
@@ -13,16 +13,10 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
-  const session = await auth();
-  if (!session?.user?.id) {
-    return new Response(JSON.stringify({ error: "Authentication required" }), {
-      status: 401,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
+  const userId = await getCurrentUserId();
 
   const scan = getScanById(id);
-  if (!scan || scan.user_id !== session.user.id) {
+  if (!scan || scan.user_id !== userId) {
     return new Response(JSON.stringify({ error: "Scan not found" }), {
       status: 404,
       headers: { "Content-Type": "application/json" },

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { getCurrentUserId } from "@/lib/currentUser";
 import { getScanById, getScanPages, getSeverityBreakdown } from "@/lib/db";
 
 export async function GET(
@@ -7,11 +7,7 @@ export async function GET(
   { params }: { params: Promise<{ scanId: string }> },
 ) {
   const { scanId } = await params;
-  const session = await auth();
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Authentication required" }, { status: 401 });
-  }
-  const userId = session.user.id;
+  const userId = await getCurrentUserId();
 
   const scan = getScanById(scanId);
   if (!scan || scan.user_id !== userId) {

@@ -9,7 +9,7 @@ import { parseAndValidateScanCookies } from "@/lib/scanCookies";
 import { assertSafeUrl, SsrfError } from "@/lib/ssrf-guard";
 import { mergeFindings, normalizeAxeViolations, summarizeIssues } from "@/lib/axeScanner";
 import { axeTagsForPreset, parseWcagPreset, type WcagPresetId } from "@/lib/wcagAxeTags";
-import { auth } from "@/auth";
+import { getCurrentUserId } from "@/lib/currentUser";
 import { createScan, updateScan, createScanPage, calculateScore } from "@/lib/db";
 import { discoverPages } from "@/lib/crawler";
 import { enforceRateLimit, scanLimiter } from "@/lib/rateLimit";
@@ -126,14 +126,11 @@ export async function POST(req: NextRequest) {
       console.info(`[scan] cache MISS url=${targetUrl}`);
     }
 
-    // ---- Multi-page scan (async, DB-backed, requires auth) ----
+    // ---- Multi-page scan (async, DB-backed; works for guests) ----
     if (Boolean(body.multiPage)) {
-      const session = await auth();
-      if (!session?.user?.id) {
-        return NextResponse.json({ error: "Authentication required for multi-page scans" }, { status: 401 });
-      }
+      const userId = await getCurrentUserId();
       const maxPages = Math.min(Math.max(Number(body.maxPages) || 5, 1), 20);
-      const scan = createScan(session.user.id, targetUrl, wcagPreset, maxPages);
+      const scan = createScan(userId, targetUrl, wcagPreset, maxPages);
 
       // Fire-and-forget background scan
       runMultiPageScan(scan.id, targetUrl, wcagPreset, tags, maxPages, deepScan, cookiesToSet).catch(
@@ -246,11 +243,11 @@ export async function POST(req: NextRequest) {
       chromeAxSummary = null;
     }
 
-    // Persist single-page scan to DB when user is authenticated
+    // Persist single-page scan to DB. Guests share the sentinel "guest"
+    // user_id; signed-in GitHub users get their own per-user bucket.
     let dbScanId: string | undefined;
-    const persistSession = await auth();
-    const persistUserId = persistSession?.user?.id;
-    if (persistUserId) {
+    const persistUserId = await getCurrentUserId();
+    {
       try {
         const vCount = issues.length;
         const pCount = axeOverview.passRules;

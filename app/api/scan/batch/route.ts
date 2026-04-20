@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { getCurrentUserId } from "@/lib/currentUser";
 import { createScan } from "@/lib/db";
 import { assertSafeUrl, SsrfError } from "@/lib/ssrf-guard";
 import { parseWcagPreset, type WcagPresetId } from "@/lib/wcagAxeTags";
@@ -12,11 +12,7 @@ export async function POST(req: NextRequest) {
     const rateLimited = await enforceRateLimit(req, scanLimiter);
     if (rateLimited) return rateLimited;
 
-    const session = await auth();
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Authentication required" }, { status: 401 });
-    }
-    const userId = session.user.id;
+    const userId = await getCurrentUserId();
 
     const body = await req.json();
     const { urls, wcagPreset: rawPreset } = body as {

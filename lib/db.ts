@@ -67,7 +67,31 @@ export function getDb(): Database.Database {
     CREATE INDEX IF NOT EXISTS idx_scan_pages_scan_id ON scan_pages(scan_id);
   `);
 
+  ensureGuestUser(_db);
   return _db;
+}
+
+/**
+ * Idempotently seed the sentinel "guest" user row.
+ *
+ * The app is guest-default — `getCurrentUserId()` returns `GUEST_USER_ID`
+ * (= "guest") for every unauthenticated request. Because `scans.user_id`
+ * is a NOT NULL FOREIGN KEY into `users(id)`, that row must exist before
+ * the first guest scan is persisted. Safe to call on every boot.
+ *
+ * Kept private to this module so route code never touches user provisioning.
+ */
+function ensureGuestUser(db: Database.Database): void {
+  db.prepare(
+    `INSERT OR IGNORE INTO users (id, email, password_hash, name, role)
+     VALUES (?, ?, ?, ?, ?)`,
+  ).run(
+    "guest",
+    "guest@local",
+    "",
+    "Guest",
+    "user",
+  );
 }
 
 export function closeDb() {

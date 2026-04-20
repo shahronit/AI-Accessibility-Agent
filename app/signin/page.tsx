@@ -43,10 +43,11 @@ export default async function SignInPage({ searchParams }: SignInPageProps) {
 
         <div className="border-border/60 bg-card/80 space-y-5 rounded-2xl border p-8 shadow-xl backdrop-blur-xl">
           <div className="space-y-1">
-            <h2 className="text-lg font-semibold">Sign in to continue</h2>
+            <h2 className="text-lg font-semibold">Sign in (optional)</h2>
             <p className="text-muted-foreground text-sm">
-              {APP_NAME} uses GitHub OAuth so you can save scans, view dashboard
-              stats, and export reports against your account.
+              {APP_NAME} works without an account. Sign in with GitHub if you
+              want your scans, dashboard stats, and reports kept under your own
+              user instead of the shared guest history.
             </p>
           </div>
 
@@ -54,7 +55,7 @@ export default async function SignInPage({ searchParams }: SignInPageProps) {
 
           <p className="text-muted-foreground text-center text-xs">
             <Link href="/" className="hover:text-foreground hover:underline">
-              Continue without signing in
+              Continue as guest
             </Link>
           </p>
         </div>
