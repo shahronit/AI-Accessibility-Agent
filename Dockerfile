@@ -1,18 +1,29 @@
 # syntax=docker/dockerfile:1.6
 #
-# A11yAgent production image (Fixes 1–9 wired in).
+# A11yAgent production image.
+#
+# The app is GUEST-DEFAULT: every route works without signing in, so all
+# auth-related env vars are optional. The only env var that materially
+# affects boot is NEXTAUTH_SECRET, because NextAuth still loads at runtime
+# (it just no longer gates anything) and needs a secret to decode session
+# cookies for users who do opt to sign in.
 #
 # Runtime env vars consumed by the app (all OPTIONAL unless noted):
-#   Auth (Fix 1, REQUIRED in prod):
-#     NEXTAUTH_SECRET, GITHUB_ID, GITHUB_SECRET, NEXTAUTH_URL
+#   Auth (all optional — sign-in is opt-in):
+#     NEXTAUTH_SECRET   recommended in prod; generate with `openssl rand -base64 32`.
+#                       Without it NextAuth logs a warning and falls back to a
+#                       random per-boot secret, which invalidates sign-in
+#                       sessions on every restart.
+#     GITHUB_ID, GITHUB_SECRET, NEXTAUTH_URL
+#                       only needed if you want the /signin GitHub button to
+#                       work. With them unset, /signin still renders but the
+#                       button fails — guest mode is unaffected.
 #   AI providers (need at least one for /api/ai-* + /api/chat):
 #     ANTHROPIC_API_KEY, GEMINI_API_KEY, ASSEMBLYAI_API_KEY
-#   Rate limiting + scan cache + scan history (Fixes 2, 6, 7):
+#   Rate limiting + scan cache + scan history:
 #     UPSTASH_REDIS_REST_URL, UPSTASH_REDIS_REST_TOKEN
-#   IBM Equal Access (Fix 5, on by default — requires Chromium, baked in below):
+#   IBM Equal Access (on by default — requires Chromium, baked in below):
 #     IBM_CHECKER_ENABLED=false   (set to disable, e.g. on tiny instances)
-#   GitHub Actions a11y gate (Fix 8, only set on the CI runner):
-#     A11Y_CI_TOKEN
 #   Multi-page scan persistence (SQLite):
 #     DB_PATH=/app/data/a11yagent.db   (default; mount a volume for persistence)
 #

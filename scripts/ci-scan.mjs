@@ -1,17 +1,19 @@
 #!/usr/bin/env node
 /**
- * Fix 8 - GitHub Actions accessibility gate.
+ * GitHub Actions accessibility gate.
  *
  * Reads a list of URLs from one of (in order):
  *   1. The `A11Y_SCAN_URLS` env var (a JSON array of URL strings).
  *   2. `.a11y-urls.json` in the repo root (`{ "urls": [...] }`).
  *
- * For each URL it POSTs to `${A11Y_BASE_URL || "http://localhost:3000"}/api/scan`
- * (with the `X-A11y-CI-Token` header so the middleware's CI bypass admits
- * the request), aggregates results, writes a Markdown summary table to
+ * For each URL it POSTs to `${A11Y_BASE_URL || "http://localhost:3000"}/api/scan`,
+ * aggregates results, writes a Markdown summary table to
  * `$GITHUB_STEP_SUMMARY`, and exits 1 only when at least one
  * `impact === "critical"` finding lands in any scan. SERIOUS / MODERATE /
  * MINOR violations are reported but never fail the build.
+ *
+ * The endpoint is now publicly reachable (A11yAgent is guest-default), so
+ * no auth header is needed.
  *
  * No external dependencies - native `fetch` (Node >= 18) only.
  */
@@ -21,7 +23,6 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 
 const BASE_URL = (process.env.A11Y_BASE_URL ?? "http://localhost:3000").replace(/\/$/, "");
-const CI_TOKEN = process.env.A11Y_CI_TOKEN ?? "";
 const SCAN_TIMEOUT_MS = Number(process.env.A11Y_SCAN_TIMEOUT_MS ?? 90_000);
 const STEP_SUMMARY = process.env.GITHUB_STEP_SUMMARY ?? null;
 
@@ -64,10 +65,10 @@ async function loadUrls() {
 }
 
 /**
- * POST to `/api/scan` with the CI token header. Aborts after
- * `SCAN_TIMEOUT_MS`. Returns either `{ ok: true, payload }` or
- * `{ ok: false, error, status? }` so the caller can render a row in the
- * summary instead of crashing the whole batch on one bad URL.
+ * POST to `/api/scan`. Aborts after `SCAN_TIMEOUT_MS`. Returns either
+ * `{ ok: true, payload }` or `{ ok: false, error, status? }` so the
+ * caller can render a row in the summary instead of crashing the whole
+ * batch on one bad URL.
  */
 async function scanOne(url) {
   const ac = new AbortController();
@@ -77,7 +78,6 @@ async function scanOne(url) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        ...(CI_TOKEN ? { "X-A11y-CI-Token": CI_TOKEN } : {}),
       },
       body: JSON.stringify({ url, wcagPreset: "wcag22-aa" }),
       signal: ac.signal,
@@ -167,11 +167,6 @@ async function main() {
   const urls = await loadUrls();
   if (urls.length === 0) fail("URL list resolved to []");
   log(`scanning ${urls.length} URL(s) against ${BASE_URL}/api/scan`);
-  if (!CI_TOKEN) {
-    log(
-      "WARN: A11Y_CI_TOKEN is unset; scans will only succeed if /api/scan is publicly reachable on this server.",
-    );
-  }
 
   const rows = [];
   for (const url of urls) {

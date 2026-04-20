@@ -1,4 +1,4 @@
-# Fix 8 - Accessibility gate for every pull request.
+# Accessibility gate for every pull request.
 #
 # Two jobs:
 #   1. build      - install deps, lint, and build the Next.js app
@@ -7,16 +7,17 @@
 #                   `.a11y-urls.json`, fail the build only if any
 #                   `impact === "critical"` violations are found.
 #
-# Required GitHub repo secrets (Settings -> Secrets and variables -> Actions):
-#   - A11Y_CI_TOKEN      arbitrary opaque string the workflow sends as
-#                        `X-A11y-CI-Token`. The middleware admits the
-#                        request when this matches `process.env.A11Y_CI_TOKEN`
-#                        (set on the running CI server). Without it,
-#                        /api/scan would 302-redirect the runner to /signin.
-#   - NEXTAUTH_SECRET    NextAuth needs a non-empty value at boot, even
-#                        though no OAuth flow runs in CI.
-#   - ANTHROPIC_API_KEY  optional - only needed if any scanned page calls
-#                        AI endpoints from a server component.
+# A11yAgent is guest-default — /api/scan is open with no auth, so the
+# workflow no longer needs an A11Y_CI_TOKEN bypass. It also no longer
+# strictly needs NEXTAUTH_SECRET (NextAuth still loads at runtime, but
+# falls back to a per-boot ephemeral secret when none is set, which is
+# fine for an ephemeral CI server). It is passed below if the secret
+# happens to be configured, so signed-in flows can be tested if needed.
+#
+# Optional GitHub repo secrets (Settings -> Secrets and variables -> Actions):
+#   - NEXTAUTH_SECRET    silences NextAuth's missing-secret warning at boot.
+#   - ANTHROPIC_API_KEY  only needed if any scanned page calls AI endpoints
+#                        from a server component.
 #   - GEMINI_API_KEY     same as above (fallback provider).
 
 name: A11y check
@@ -54,7 +55,6 @@ jobs:
 
       - name: Build
         env:
-          # Fix 1 requires NEXTAUTH_SECRET to be set at build time too.
           NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET }}
         run: npm run build
 
@@ -64,9 +64,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
-      # Server-side env (consumed by `npm run start`).
+      # Server-side env (consumed by `npm run start`). NEXTAUTH_SECRET is
+      # optional; without it NextAuth uses a random per-boot secret.
       NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET }}
-      A11Y_CI_TOKEN: ${{ secrets.A11Y_CI_TOKEN }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       # Skip IBM Equal Access in CI - it requires chromedriver and we

@@ -1,17 +1,18 @@
 # Render Blueprint: https://render.com/docs/blueprint-spec
 #
 # Deploy from the Render dashboard → "New" → "Blueprint" → point to this
-# repo. After the first deploy you must populate the `sync: false`
-# secrets below in the Render dashboard before the service will start
-# accepting requests on protected routes.
+# repo. The service will start serving traffic on the very first deploy
+# without any manual env var setup, because A11yAgent is GUEST-DEFAULT —
+# every route works without signing in. Fill in the `sync: false` keys
+# below only for the features you actually want to enable.
 #
-# What's wired in (Fixes 1–9):
-#   - Fix 1  NextAuth + GitHub OAuth   → NEXTAUTH_SECRET, GITHUB_ID, GITHUB_SECRET, NEXTAUTH_URL
-#   - Fix 2  Upstash rate limiting     → UPSTASH_REDIS_REST_URL/TOKEN  (optional, no-op when unset)
-#   - Fix 5  IBM Equal Access          → IBM_CHECKER_ENABLED=true (default; set to false to skip)
-#   - Fix 6  Scan cache (10-min)       → reuses Upstash creds above
-#   - Fix 7  /history + /report/[id]   → reuses Upstash creds above
-#   - Fix 8  GitHub Actions a11y gate  → A11Y_CI_TOKEN (only set if you want the gate to bypass auth)
+# What's wired in:
+#   - Guest mode             → no auth required for any route (default)
+#   - GitHub sign-in (opt-in) → NEXTAUTH_SECRET (auto), GITHUB_ID, GITHUB_SECRET, NEXTAUTH_URL
+#   - Upstash rate limiting  → UPSTASH_REDIS_REST_URL/TOKEN  (no-op when unset)
+#   - IBM Equal Access       → IBM_CHECKER_ENABLED=true (default; set false to skip)
+#   - Scan cache (10-min)    → reuses Upstash creds above
+#   - /history + /report/[id] index → reuses Upstash creds above
 
 services:
   - type: web
@@ -33,14 +34,24 @@ services:
       - key: DB_PATH
         value: /app/data/a11yagent.db
 
-      # ── Fix 1 — NextAuth + GitHub OAuth ─────────────────────────────
+      # ── Auth (optional — guest mode is the default) ─────────────────
+      # NEXTAUTH_SECRET is consumed by NextAuth at boot to decode session
+      # cookies for users who opt in to /signin. Auto-generated so the
+      # service never starts with an empty secret. Rotate by deleting the
+      # value in the dashboard and re-deploying — it'll regenerate.
       - key: NEXTAUTH_SECRET
         generateValue: true
+
+      # The three keys below ONLY need to be filled in if you want the
+      # GitHub sign-in button on /signin to work. With them unset:
+      #   - guest mode keeps working (every route is open)
+      #   - /signin renders but the GitHub button fails
+      #   - signed-in per-user history bucket is unavailable; everything
+      #     persists under the shared "guest" user
       # Render publishes the public URL as RENDER_EXTERNAL_URL once the
       # service is live; set NEXTAUTH_URL to that value (e.g.
       # https://a11yagent.onrender.com) so OAuth callbacks resolve
-      # correctly. Cannot be auto-derived because OAuth providers must
-      # see a stable callback URL.
+      # correctly.
       - key: NEXTAUTH_URL
         sync: false
       - key: GITHUB_ID
@@ -56,22 +67,18 @@ services:
       - key: ASSEMBLYAI_API_KEY
         sync: false
 
-      # ── Fix 2 / Fix 6 / Fix 7 — Upstash Redis ───────────────────────
-      # When unset, rate limiting + scan cache + scan history all
-      # degrade gracefully (no 429s, no caching, no /history index).
+      # ── Upstash Redis (optional) ────────────────────────────────────
+      # Powers per-IP rate limiting, the 10-min scan-result cache, the
+      # /api/scan-diff endpoint, and the KV-backed scan history index.
+      # When unset, all four degrade gracefully (no 429s, no caching,
+      # /api/scan-history returns an empty list).
       - key: UPSTASH_REDIS_REST_URL
         sync: false
       - key: UPSTASH_REDIS_REST_TOKEN
         sync: false
 
-      # ── Fix 5 — IBM Equal Access ────────────────────────────────────
+      # ── IBM Equal Access ────────────────────────────────────────────
       # Default is on. Set to "false" to skip IBM and only use axe-core
       # (saves ~3-5s per scan on cold starts).
       - key: IBM_CHECKER_ENABLED
         value: "true"
-
-      # ── Fix 8 — GitHub Actions a11y gate ────────────────────────────
-      # Only needed if you point the workflow at this Render deployment
-      # instead of a CI-local server. Generate with `openssl rand -hex 32`.
-      - key: A11Y_CI_TOKEN
-        sync: false
