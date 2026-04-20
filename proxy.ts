@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 
 /**
- * Auth middleware.
+ * Auth proxy (Next.js 16; renamed from `middleware.ts` per the
+ * middleware-to-proxy convention: https://nextjs.org/docs/messages/middleware-to-proxy).
  *
  * Public paths (always allowed without a session):
  *   - "/"            landing/dashboard read-only view
@@ -13,6 +14,7 @@ import { auth } from "@/auth";
  * redirected to `/signin?callbackUrl=<original-url>` so the GitHub flow returns
  * the user to where they tried to go.
  */
+
 /**
  * Fix 8 - CI scan bypass.
  *
@@ -22,7 +24,7 @@ import { auth } from "@/auth";
  *   - the request carries `X-A11y-CI-Token: <secret>`,
  *   - the matching `A11Y_CI_TOKEN` env var is set on the server, AND
  *   - the path is exactly `/api/scan`,
- * the middleware lets the request through unauthenticated. The token is a
+ * the proxy lets the request through unauthenticated. The token is a
  * GitHub repo secret; the env var is only present in the CI runner. In
  * production the env var is unset, so the bypass cannot fire even if a
  * caller happens to know the path.
@@ -33,8 +35,6 @@ function isCiScanBypass(req: Request, pathname: string): boolean {
   if (!expected) return false;
   const presented = req.headers.get("x-a11y-ci-token");
   if (!presented) return false;
-  // Constant-time equality - both inputs are short, but avoid leaking
-  // length/byte timing differences to a network observer.
   if (presented.length !== expected.length) return false;
   let mismatch = 0;
   for (let i = 0; i < presented.length; i++) {
@@ -43,7 +43,7 @@ function isCiScanBypass(req: Request, pathname: string): boolean {
   return mismatch === 0;
 }
 
-export default auth((req) => {
+export const proxy = auth((req) => {
   const { pathname, search } = req.nextUrl;
 
   const isPublic =
@@ -67,7 +67,7 @@ export default auth((req) => {
 });
 
 /**
- * Skip Next.js internals and static assets so the middleware doesn't run on
+ * Skip Next.js internals and static assets so the proxy doesn't run on
  * every image / font / chunk request. Everything else (pages and API) hits
  * the auth check above.
  */
