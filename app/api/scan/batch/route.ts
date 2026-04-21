@@ -50,7 +50,7 @@ export async function POST(req: NextRequest) {
         continue;
       }
       const safeUrl = parsed.toString();
-      const scan = createScan(userId, safeUrl, wcagPreset, 1);
+      const scan = await createScan(userId, safeUrl, wcagPreset, 1);
       results.push({ url: safeUrl, scanId: scan.id });
     }
 

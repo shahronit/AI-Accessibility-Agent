@@ -4,8 +4,10 @@ import { getDashboardStats, getSeverityBreakdown } from "@/lib/db";
 
 export async function GET() {
   const userId = await getCurrentUserId();
-  const stats = getDashboardStats(userId);
-  const severity = getSeverityBreakdown(userId);
+  const [stats, severity] = await Promise.all([
+    getDashboardStats(userId),
+    getSeverityBreakdown(userId),
+  ]);
 
   return NextResponse.json({ ...stats, severity });
 }

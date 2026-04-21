@@ -10,8 +10,10 @@ export async function GET(req: NextRequest) {
   const limit = Math.min(Math.max(Number(searchParams.get("limit")) || 20, 1), 100);
   const offset = (page - 1) * limit;
 
-  const scans = getUserScans(userId, limit, offset);
-  const total = getUserScanCount(userId);
+  const [scans, total] = await Promise.all([
+    getUserScans(userId, limit, offset),
+    getUserScanCount(userId),
+  ]);
 
   return NextResponse.json({
     scans,
@@ -24,6 +26,6 @@ export async function GET(req: NextRequest) {
 
 export async function DELETE() {
   const userId = await getCurrentUserId();
-  clearUserHistory(userId);
+  await clearUserHistory(userId);
   return NextResponse.json({ message: "History cleared" });
 }

@@ -8,17 +8,16 @@
 #                   `impact === "critical"` violations are found.
 #
 # A11yAgent is guest-default — /api/scan is open with no auth, so the
-# workflow no longer needs an A11Y_CI_TOKEN bypass. It also no longer
-# strictly needs NEXTAUTH_SECRET (NextAuth still loads at runtime, but
-# falls back to a per-boot ephemeral secret when none is set, which is
-# fine for an ephemeral CI server). It is passed below if the secret
-# happens to be configured, so signed-in flows can be tested if needed.
+# workflow needs no Firebase/auth credentials. The build still works
+# without NEXT_PUBLIC_FIREBASE_* env vars (the client bundle just lacks
+# Firebase web config; the /signin page UI degrades gracefully).
 #
 # Optional GitHub repo secrets (Settings -> Secrets and variables -> Actions):
-#   - NEXTAUTH_SECRET    silences NextAuth's missing-secret warning at boot.
 #   - ANTHROPIC_API_KEY  only needed if any scanned page calls AI endpoints
 #                        from a server component.
 #   - GEMINI_API_KEY     same as above (fallback provider).
+#   - FIREBASE_SERVICE_ACCOUNT_JSON  set only if you want CI scans to
+#                                    persist as an authenticated user.
 
 name: A11y check
 
@@ -54,8 +53,6 @@ jobs:
         run: npm run lint
 
       - name: Build
-        env:
-          NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET }}
         run: npm run build
 
   a11y-scan:
@@ -64,9 +61,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
-      # Server-side env (consumed by `npm run start`). NEXTAUTH_SECRET is
-      # optional; without it NextAuth uses a random per-boot secret.
-      NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET }}
+      # Server-side env (consumed by `npm run start`). All Firebase env
+      # vars are optional in CI because /api/scan runs as guest.
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       # Skip IBM Equal Access in CI - it requires chromedriver and we

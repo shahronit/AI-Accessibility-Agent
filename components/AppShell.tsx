@@ -18,7 +18,7 @@ import {
   ScanSearch,
   Settings,
 } from "lucide-react";
-import { signOut, useSession } from "next-auth/react";
+import { signOut, useSession } from "@/components/AuthProvider";
 import { A11yAmbience } from "@/components/A11yAmbience";
 import { AppLogo } from "@/components/AppLogo";
 import { APP_NAME, APP_TAGLINE } from "@/lib/brand";

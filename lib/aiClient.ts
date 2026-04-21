@@ -541,17 +541,94 @@ export function selectExplainModel(issue: ScanIssue): string {
 const EXPLAIN_SYSTEM_PROMPT =
   "You are an accessibility expert. Follow the user message structure exactly. Issue data at the top is **TOON** (Token-Oriented Object Notation)—parse it as structured fields. Write in professional corporate prose: no Markdown hash headings, no asterisk or underscore emphasis. Keep tables and the required ADD/REMOVE lines as specified.";
 
+/**
+ * Try each `attempts[i]()` in order. Forward chunks from the first attempt
+ * that yields anything. If an attempt errors **before** any chunk has been
+ * yielded, move on to the next attempt. Once a byte is yielded we are
+ * committed — a mid-stream error from that attempt re-surfaces unchanged
+ * because the client has already started rendering.
+ *
+ * If every attempt fails before yielding, the last error is re-thrown so the
+ * caller sees the most recent (and usually most actionable) failure.
+ *
+ * Used by `explainIssueStream` to walk the full provider chain
+ *   Gemini primary -> Gemini model fallbacks -> Anthropic -> AssemblyAI
+ * so the user gets an explanation as long as **any** configured provider
+ * still has capacity, instead of dying on the first 429.
+ */
+/**
+ * Walk `attempts` until one yields a non-empty chunk; return that first chunk
+ * and an iterator over the remaining chunks of the same attempt. Throws the
+ * last failure if every attempt errors before producing a chunk.
+ *
+ * Why pre-flight instead of just streaming?
+ *   `new Response(stream)` commits the HTTP status + headers as soon as it
+ *   is returned. If the underlying iterator then errors before any chunk is
+ *   written, the client sees `200 OK` followed by an aborted body — which
+ *   browsers surface as a generic network error with no usable message.
+ *   By pulling the first chunk *before* returning the Response, the route
+ *   handler can either:
+ *     - respond 200 + stream the rest (success), OR
+ *     - respond 500 + JSON `{ error }` with the actual upstream message
+ *       (clean failure, recognised by `postAppStream` on the client).
+ */
+async function peekChainedFirstChunk(
+  attempts: Array<() => Promise<AsyncIterable<string>> | AsyncIterable<string>>,
+): Promise<{ firstChunk: string; rest: AsyncIterator<string> }> {
+  if (attempts.length === 0) {
+    throw new Error("No providers available for streaming explanation");
+  }
+  const errors: Error[] = [];
+  for (let i = 0; i < attempts.length; i++) {
+    try {
+      const iter = await attempts[i]();
+      const it = iter[Symbol.asyncIterator]();
+      while (true) {
+        const next = await it.next();
+        if (next.done) {
+          // Empty stream — treat as a soft failure and try the next attempt.
+          errors.push(new Error("Provider returned an empty stream"));
+          break;
+        }
+        if (next.value) {
+          return { firstChunk: next.value, rest: it };
+        }
+        // Skip empty chunks (some providers emit zero-length deltas first).
+      }
+    } catch (err) {
+      errors.push(err instanceof Error ? err : new Error(String(err)));
+    }
+  }
+
+  // All attempts failed pre-first-byte. Prefer the first rate-limit /
+  // transient error (it's the most actionable: "wait and retry" or
+  // "raise quota") over later errors that are usually downstream
+  // consequences of running out of working models (e.g. a deprecated
+  // fallback returning 404 after every healthy model 429'd). Fall back
+  // to the last error if no transient one was seen.
+  const transient = errors.find((e) => isGeminiTransientError(e));
+  throw transient ?? errors[errors.length - 1] ?? new Error("All providers failed");
+}
+
+/**
+ * Issue explanations are locked to Gemini — `chatCompletionGemini` already
+ * walks `GEMINI_MODEL_FALLBACKS` (separate free-tier quota buckets) and
+ * retries 429 / 503 with the server-supplied retry delay. Other providers
+ * are intentionally bypassed so this feature has predictable cost / privacy
+ * characteristics regardless of which other keys are in `.env.local`.
+ */
 export async function explainIssue(issue: ScanIssue): Promise<{ text: string; model: string }> {
+  if (!hasGeminiKey()) {
+    throw new Error(
+      "GEMINI_API_KEY is required for AI explanations. Create a free key at https://aistudio.google.com/apikey and add it to .env.local.",
+    );
+  }
   const userContent = buildExplainPrompt(issue);
-  const assemblyModel = issue.impact === "critical" ? aaCriticalModel : aaDefaultModel;
-  const anthropicModel = issue.impact === "critical" ? antOpusModel : antSonnetModel;
   const geminiModel = issue.impact === "critical" ? gemCriticalModel : gemDefaultModel;
 
-  return runChatCompletion({
-    assemblyModel,
-    anthropicModel,
-    geminiModel,
-    max_tokens: 4096,
+  return chatCompletionGemini({
+    model: geminiModel,
+    maxOutputTokens: 4096,
     messages: [
       { role: "system", content: EXPLAIN_SYSTEM_PROMPT },
       { role: "user", content: userContent },
@@ -564,34 +641,33 @@ export async function explainIssue(issue: ScanIssue): Promise<{ text: string; mo
  * of raw markdown text deltas plus the resolved `model` id so the route
  * handler can set `X-AI-Model`.
  *
- * Why streaming for the explain tab?
- *   The non-streaming Anthropic call returns NOTHING until all 4096 tokens
- *   are generated, which on a slow LLM (rate-limited, 5xx-retried, or just
- *   a heavy region) can routinely exceed 120 s — producing the user-visible
- *   "Request timed out after 120s" error. With streaming the user sees
- *   text within ~1 s and the perception of "hang" disappears even when the
- *   full generation takes a while.
+ * Locked to Gemini (no Anthropic / AssemblyAI fallback). The chain walks
+ * the configured Gemini models in order:
+ *   primary (`GEMINI_MODEL_DEFAULT` / `GEMINI_MODEL_CRITICAL`)
+ *   -> each id in `GEMINI_MODEL_FALLBACKS` (default
+ *       `gemini-2.5-flash-lite, gemini-2.0-flash-lite, gemini-1.5-flash`)
+ * Each model has a separate free-tier quota bucket per the Gemini docs,
+ * so a 429 on `gemini-2.5-flash` typically still leaves the lite variants
+ * available.
  *
- * Provider selection follows the same fallback chain as `runChatCompletion`:
- *   - LLM_PROVIDER=anthropic -> Anthropic SSE stream
- *   - LLM_PROVIDER=gemini    -> Gemini SSE stream (no in-stream retry; a
- *                               fresh request restarts at most once on
- *                               transient failures, same as the
- *                               testing-analysis stream).
- *   - default / assemblyai   -> AssemblyAI is non-streaming, so we emit
- *                               the full response as a single chunk to
- *                               keep the route/client protocol uniform.
+ * The first chunk is pulled via `peekChainedFirstChunk` *before* the HTTP
+ * Response is constructed, so a complete failure surfaces as a JSON 500
+ * with the upstream error message instead of a `200 OK` with a torn body.
  *
- * `signal` propagates client disconnects to the underlying SDK so we never
- * leak an in-flight Anthropic request when the user navigates away.
+ * `signal` propagates client disconnects so we never leak an in-flight
+ * Gemini request when the user navigates away.
  */
 export async function explainIssueStream(
   issue: ScanIssue,
   signal?: AbortSignal,
 ): Promise<{ stream: ReadableStream<Uint8Array>; model: string }> {
+  if (!hasGeminiKey()) {
+    throw new Error(
+      "GEMINI_API_KEY is required for AI explanations. Create a free key at https://aistudio.google.com/apikey and add it to .env.local.",
+    );
+  }
+
   const userContent = buildExplainPrompt(issue);
-  const assemblyModel = issue.impact === "critical" ? aaCriticalModel : aaDefaultModel;
-  const anthropicModel = issue.impact === "critical" ? antOpusModel : antSonnetModel;
   const geminiModel = issue.impact === "critical" ? gemCriticalModel : gemDefaultModel;
   const maxTokens = 4096;
 
@@ -600,104 +676,40 @@ export async function explainIssueStream(
     { role: "user", content: userContent },
   ];
 
-  const provider = resolvedLlmProvider();
-
-  if (provider === "anthropic") {
-    if (!hasAnthropicKey()) {
-      throw new Error(
-        "LLM_PROVIDER is anthropic but ANTHROPIC_API_KEY is missing. Add it from https://console.anthropic.com/ or use LLM_PROVIDER=gemini with GEMINI_API_KEY.",
-      );
-    }
-    const client = getAnthropicClient();
-    const { system, conversation } = splitSystemAndConversation(messages);
-    const iter = anthropicTextStream(client, {
-      model: anthropicModel,
-      max_tokens: maxTokens,
-      ...(system ? { system } : {}),
-      messages: conversation,
-      ...(signal ? { signal } : {}),
-    });
-    return { stream: streamFromTextIterable(iter, { signal }), model: anthropicModel };
+  const apiKey = process.env.GEMINI_API_KEY!.trim();
+  const { systemInstruction, dialogue } = splitSystemAndNonSystem(messages);
+  if (dialogue.length === 0) {
+    throw new Error("No user or assistant content to send to Gemini");
   }
+  const lastUser = dialogue[dialogue.length - 1];
+  const prior = dialogue.slice(0, -1);
+  const history: Content[] = prior.map((m) => ({
+    role: m.role === "assistant" ? "model" : "user",
+    parts: [{ text: m.content }],
+  }));
 
-  if (provider === "gemini") {
-    if (!hasGeminiKey()) {
-      throw new Error(
-        "LLM_PROVIDER is gemini but GEMINI_API_KEY is missing. Create a key at https://aistudio.google.com/apikey or set LLM_PROVIDER to anthropic or assemblyai.",
-      );
-    }
-    const apiKey = process.env.GEMINI_API_KEY!.trim();
-    const { systemInstruction, dialogue } = splitSystemAndNonSystem(messages);
-    if (dialogue.length === 0) {
-      throw new Error("No user or assistant content to send to Gemini");
-    }
-    const lastUser = dialogue[dialogue.length - 1];
-    const prior = dialogue.slice(0, -1);
-    const history: Content[] = prior.map((m) => ({
-      role: m.role === "assistant" ? "model" : "user",
-      parts: [{ text: m.content }],
-    }));
-    const iter = geminiTextStream({
-      apiKey,
-      model: geminiModel,
-      ...(systemInstruction ? { systemInstruction } : {}),
-      history,
-      lastUserText: lastUser.content,
-      maxOutputTokens: maxTokens,
-    });
-    return { stream: streamFromTextIterable(iter, { signal }), model: geminiModel };
-  }
+  const attempts: Array<() => AsyncIterable<string>> = geminiModelCandidates(geminiModel).map(
+    (modelId) => () =>
+      geminiTextStream({
+        apiKey,
+        model: modelId,
+        ...(systemInstruction ? { systemInstruction } : {}),
+        history,
+        lastUserText: lastUser.content,
+        maxOutputTokens: maxTokens,
+      }),
+  );
 
-  // AssemblyAI gateway: no streaming. Same handoff pattern as
-  // analyzeScanForTestingAgentStream — fall through to a streaming-
-  // capable provider on LeMUR / access errors when one is configured.
-  try {
-    const { text, model } = await chatCompletionAssemblyAI({
-      model: assemblyModel,
-      messages,
-      max_tokens: maxTokens,
-    });
-    const single: AsyncIterable<string> = (async function* () {
-      yield text;
-    })();
-    return { stream: streamFromTextIterable(single, { signal }), model };
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    if (isLemurOrAccessError(msg)) {
-      if (hasAnthropicKey()) {
-        const client = getAnthropicClient();
-        const { system, conversation } = splitSystemAndConversation(messages);
-        const iter = anthropicTextStream(client, {
-          model: anthropicModel,
-          max_tokens: maxTokens,
-          ...(system ? { system } : {}),
-          messages: conversation,
-          ...(signal ? { signal } : {}),
-        });
-        return { stream: streamFromTextIterable(iter, { signal }), model: anthropicModel };
-      }
-      if (hasGeminiKey()) {
-        const apiKey = process.env.GEMINI_API_KEY!.trim();
-        const { systemInstruction, dialogue } = splitSystemAndNonSystem(messages);
-        const lastUser = dialogue[dialogue.length - 1];
-        const prior = dialogue.slice(0, -1);
-        const history: Content[] = prior.map((m) => ({
-          role: m.role === "assistant" ? "model" : "user",
-          parts: [{ text: m.content }],
-        }));
-        const iter = geminiTextStream({
-          apiKey,
-          model: geminiModel,
-          ...(systemInstruction ? { systemInstruction } : {}),
-          history,
-          lastUserText: lastUser?.content ?? "",
-          maxOutputTokens: maxTokens,
-        });
-        return { stream: streamFromTextIterable(iter, { signal }), model: geminiModel };
-      }
+  const { firstChunk, rest } = await peekChainedFirstChunk(attempts);
+  const wrapped = (async function* () {
+    yield firstChunk;
+    while (true) {
+      const next = await rest.next();
+      if (next.done) return;
+      if (next.value) yield next.value;
     }
-    throw e;
-  }
+  })();
+  return { stream: streamFromTextIterable(wrapped, { signal }), model: geminiModel };
 }
 
 export type ChatMessage = { role: "user" | "assistant"; content: string };

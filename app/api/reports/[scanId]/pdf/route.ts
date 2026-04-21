@@ -9,7 +9,7 @@ export async function GET(
   const { scanId } = await params;
   const userId = await getCurrentUserId();
 
-  const scan = getScanById(scanId);
+  const scan = await getScanById(scanId);
   if (!scan || scan.user_id !== userId) {
     return new Response(JSON.stringify({ error: "Scan not found" }), {
       status: 404,
@@ -24,7 +24,7 @@ export async function GET(
     });
   }
 
-  const pages = getScanPages(scanId);
+  const pages = await getScanPages(scanId);
   const pdf = generatePdfReport(scan, pages);
 
   return new Response(new Uint8Array(pdf), {

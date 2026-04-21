@@ -4,7 +4,7 @@ import { Suspense, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Download, FileSpreadsheet, Loader2, ScanSearch } from "lucide-react";
-import { useSession } from "next-auth/react";
+import { useSession } from "@/components/AuthProvider";
 import { ScanFindingsReport } from "@/components/ScanFindingsReport";
 import { useScanSession } from "@/components/ScanSessionProvider";
 import { buttonVariants } from "@/components/ui/button";

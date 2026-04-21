@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { auth } from "@/auth";
 import { APP_DESCRIPTION, APP_NAME, APP_TITLE_DEFAULT } from "@/lib/brand";
 import { Providers } from "./providers";
 import "./globals.css";
@@ -23,19 +22,18 @@ export const metadata: Metadata = {
   description: APP_DESCRIPTION,
 };
 
-export default async function RootLayout({
+export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const session = await auth();
   return (
     <html
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} dark h-full antialiased`}
     >
       <body className="flex min-h-full flex-col">
-        <Providers session={session}>{children}</Providers>
+        <Providers>{children}</Providers>
       </body>
     </html>
   );

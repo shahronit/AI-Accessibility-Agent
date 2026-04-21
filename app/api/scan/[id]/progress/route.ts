@@ -15,7 +15,7 @@ export async function GET(
   const { id } = await params;
   const userId = await getCurrentUserId();
 
-  const scan = getScanById(id);
+  const scan = await getScanById(id);
   if (!scan || scan.user_id !== userId) {
     return new Response(JSON.stringify({ error: "Scan not found" }), {
       status: 404,
@@ -48,7 +48,7 @@ export async function GET(
       // Poll for progress updates
       for (let i = 0; i < 300; i++) {
         const progress = getScanProgress(id);
-        const current = getScanById(id);
+        const current = await getScanById(id);
 
         if (progress) {
           send(progress);

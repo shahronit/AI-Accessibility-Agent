@@ -8,7 +8,8 @@
 #
 # What's wired in:
 #   - Guest mode             → no auth required for any route (default)
-#   - GitHub sign-in (opt-in) → NEXTAUTH_SECRET (auto), GITHUB_ID, GITHUB_SECRET, NEXTAUTH_URL
+#   - Firebase Auth (opt-in) → NEXT_PUBLIC_FIREBASE_*, FIREBASE_SERVICE_ACCOUNT_JSON
+#   - Firestore (opt-in)     → reuses the same service account
 #   - Upstash rate limiting  → UPSTASH_REDIS_REST_URL/TOKEN  (no-op when unset)
 #   - IBM Equal Access       → IBM_CHECKER_ENABLED=true (default; set false to skip)
 #   - Scan cache (10-min)    → reuses Upstash creds above
@@ -28,35 +29,26 @@ services:
         value: production
       - key: PORT
         value: "3000"
-      # SQLite path for multi-page scan history. On the free plan there is
-      # no persistent disk, so the DB is recreated on every cold start;
-      # add a `disks:` entry on a paid plan if you need persistence.
-      - key: DB_PATH
-        value: /app/data/a11yagent.db
 
-      # ── Auth (optional — guest mode is the default) ─────────────────
-      # NEXTAUTH_SECRET is consumed by NextAuth at boot to decode session
-      # cookies for users who opt in to /signin. Auto-generated so the
-      # service never starts with an empty secret. Rotate by deleting the
-      # value in the dashboard and re-deploying — it'll regenerate.
-      - key: NEXTAUTH_SECRET
-        generateValue: true
-
-      # The three keys below ONLY need to be filled in if you want the
-      # GitHub sign-in button on /signin to work. With them unset:
-      #   - guest mode keeps working (every route is open)
-      #   - /signin renders but the GitHub button fails
-      #   - signed-in per-user history bucket is unavailable; everything
-      #     persists under the shared "guest" user
-      # Render publishes the public URL as RENDER_EXTERNAL_URL once the
-      # service is live; set NEXTAUTH_URL to that value (e.g.
-      # https://a11yagent.onrender.com) so OAuth callbacks resolve
-      # correctly.
-      - key: NEXTAUTH_URL
+      # ── Firebase (optional — guest mode is the default) ─────────────
+      # The four NEXT_PUBLIC_FIREBASE_* values are inlined into the
+      # client bundle at BUILD time. They must be supplied as Docker
+      # build args (set as Render env vars below — Render passes them
+      # through to `docker build` automatically) AND remain available at
+      # runtime.
+      #
+      # FIREBASE_SERVICE_ACCOUNT_JSON is server-only: paste the entire
+      # service-account JSON (single line). Newlines inside the
+      # private_key may be backslash-escaped — the app normalizes them.
+      - key: NEXT_PUBLIC_FIREBASE_API_KEY
         sync: false
-      - key: GITHUB_ID
+      - key: NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
         sync: false
-      - key: GITHUB_SECRET
+      - key: NEXT_PUBLIC_FIREBASE_PROJECT_ID
+        sync: false
+      - key: NEXT_PUBLIC_FIREBASE_APP_ID
+        sync: false
+      - key: FIREBASE_SERVICE_ACCOUNT_JSON
         sync: false
 
       # ── AI providers (configure at least one) ───────────────────────

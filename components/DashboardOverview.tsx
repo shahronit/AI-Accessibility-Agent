@@ -15,7 +15,7 @@ import {
   ScanSearch,
   Sparkles,
 } from "lucide-react";
-import { useSession } from "next-auth/react";
+import { useSession } from "@/components/AuthProvider";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { APP_NAME } from "@/lib/brand";
 import { cn } from "@/lib/utils";

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useSession } from "next-auth/react";
+import { useSession } from "@/components/AuthProvider";
 import { CheckCircle2, Loader2, XCircle, Globe, Ban } from "lucide-react";
 import { cn } from "@/lib/utils";
 

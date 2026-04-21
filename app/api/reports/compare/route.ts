@@ -45,8 +45,10 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Both scanA and scanB query params required" }, { status: 400 });
   }
 
-  const scanA = getScanById(scanAId);
-  const scanB = getScanById(scanBId);
+  const [scanA, scanB] = await Promise.all([
+    getScanById(scanAId),
+    getScanById(scanBId),
+  ]);
 
   if (!scanA || scanA.user_id !== userId) {
     return NextResponse.json({ error: "Scan A not found" }, { status: 404 });
@@ -55,8 +57,10 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Scan B not found" }, { status: 404 });
   }
 
-  const pagesA = getScanPages(scanAId);
-  const pagesB = getScanPages(scanBId);
+  const [pagesA, pagesB] = await Promise.all([
+    getScanPages(scanAId),
+    getScanPages(scanBId),
+  ]);
   const rulesA = extractViolationRules(pagesA);
   const rulesB = extractViolationRules(pagesB);
 

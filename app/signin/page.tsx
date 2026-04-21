@@ -1,9 +1,7 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
-import { auth } from "@/auth";
 import { A11yAmbience } from "@/components/A11yAmbience";
 import { AppLogo } from "@/components/AppLogo";
-import { GithubSignInButton } from "@/components/GithubSignInButton";
+import { SignInPanel } from "@/components/SignInPanel";
 import { APP_NAME, APP_TAGLINE } from "@/lib/brand";
 
 interface SignInPageProps {
@@ -14,20 +12,14 @@ function pickCallback(raw: string | string[] | undefined): string {
   if (!raw) return "/";
   const value = Array.isArray(raw) ? raw[0] : raw;
   if (!value || typeof value !== "string") return "/";
-  // Only allow same-origin redirects to prevent open-redirect abuse via
-  // ?callbackUrl=https://evil.example.com.
+  // Same-origin only — block open-redirect abuse via ?callbackUrl=https://evil.example.com.
   if (!value.startsWith("/") || value.startsWith("//")) return "/";
   return value;
 }
 
 export default async function SignInPage({ searchParams }: SignInPageProps) {
-  const session = await auth();
   const params = await searchParams;
   const callbackUrl = pickCallback(params.callbackUrl);
-
-  if (session?.user) {
-    redirect(callbackUrl);
-  }
 
   return (
     <div className="bg-background relative flex min-h-dvh items-center justify-center px-4 py-12">
@@ -45,13 +37,14 @@ export default async function SignInPage({ searchParams }: SignInPageProps) {
           <div className="space-y-1">
             <h2 className="text-lg font-semibold">Sign in (optional)</h2>
             <p className="text-muted-foreground text-sm">
-              {APP_NAME} works without an account. Sign in with GitHub if you
-              want your scans, dashboard stats, and reports kept under your own
-              user instead of the shared guest history.
+              {APP_NAME} works without an account. Sign in with email/password,
+              Google, or GitHub if you want your scans, dashboard stats, and
+              reports kept under your own user instead of the shared guest
+              history.
             </p>
           </div>
 
-          <GithubSignInButton callbackUrl={callbackUrl} />
+          <SignInPanel callbackUrl={callbackUrl} />
 
           <p className="text-muted-foreground text-center text-xs">
             <Link href="/" className="hover:text-foreground hover:underline">

@@ -9,12 +9,13 @@ export async function GET(
   const { scanId } = await params;
   const userId = await getCurrentUserId();
 
-  const scan = getScanById(scanId);
+  const scan = await getScanById(scanId);
   if (!scan || scan.user_id !== userId) {
     return NextResponse.json({ error: "Scan not found" }, { status: 404 });
   }
 
-  const pages = getScanPages(scanId).map((p) => {
+  const pagesRaw = await getScanPages(scanId);
+  const pages = pagesRaw.map((p) => {
     let results = null;
     if (p.results_json) {
       try {
@@ -26,7 +27,7 @@ export async function GET(
     return { ...p, results, results_json: undefined };
   });
 
-  const severity = getSeverityBreakdown(userId);
+  const severity = await getSeverityBreakdown(userId);
 
   const summary = {
     totalViolations: scan.total_violations,

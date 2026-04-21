@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useSession } from "next-auth/react";
+import { useSession } from "@/components/AuthProvider";
 import { loadScanHistory } from "@/lib/scanHistory";
 import { ArrowDown, ArrowUp, GitCompareArrows, Loader2, Minus } from "lucide-react";
 import { cn } from "@/lib/utils";

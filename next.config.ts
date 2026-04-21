@@ -11,7 +11,9 @@ const nextConfig: NextConfig = {
     "puppeteer-core",
     "@sparticuz/chromium",
     "axe-core",
-    "better-sqlite3",
+    // firebase-admin pulls in gRPC + protobuf descriptors that Turbopack/webpack
+    // tracing cannot inline. Keeping it external lets Node load it at runtime.
+    "firebase-admin",
     // accessibility-checker uses dynamic require() of compiled engines + an
     // optional baseline file. Keeping it external prevents Turbopack from
     // tracing those dynamic imports and lets it load via Node's runtime

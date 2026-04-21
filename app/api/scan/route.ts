@@ -239,13 +239,13 @@ export async function POST(req: NextRequest) {
     if (Boolean(body.multiPage)) {
       const userId = await getCurrentUserId();
       const maxPages = Math.min(Math.max(Number(body.maxPages) || 5, 1), 20);
-      const scan = createScan(userId, targetUrl, wcagPreset, maxPages);
+      const scan = await createScan(userId, targetUrl, wcagPreset, maxPages);
 
       // Fire-and-forget background scan
       runMultiPageScan(scan.id, targetUrl, wcagPreset, tags, maxPages, deepScan, cookiesToSet, basicAuth).catch(
-        (err) => {
+        async (err) => {
           console.error(`Multi-page scan ${scan.id} failed:`, err);
-          updateScan(scan.id, {
+          await updateScan(scan.id, {
             status: "failed",
             error_message: err instanceof Error ? err.message : "Unknown error",
           });
@@ -380,14 +380,14 @@ export async function POST(req: NextRequest) {
         const pCount = axeOverview.passRules;
         const iCount = axeOverview.incompleteRules;
         const score = calculateScore(vCount, pCount);
-        const scan = createScan(persistUserId, targetUrl, wcagPreset, 1);
+        const scan = await createScan(persistUserId, targetUrl, wcagPreset, 1);
         dbScanId = scan.id;
-        createScanPage(
+        await createScanPage(
           scan.id, targetUrl, targetUrl, score,
           vCount, pCount, iCount,
           JSON.stringify({ violations: axeRaw.violations, passes, incomplete }),
         );
-        updateScan(scan.id, {
+        await updateScan(scan.id, {
           status: "completed",
           overall_score: score,
           total_violations: vCount,
@@ -524,14 +524,14 @@ async function runMultiPageScan(
 ) {
   let browser: Awaited<ReturnType<typeof puppeteer.launch>> | undefined;
   try {
-    updateScan(scanId, { status: "crawling" });
+    await updateScan(scanId, { status: "crawling" });
     scanProgress.set(scanId, { phase: "crawling", message: "Discovering pages...", pagesScanned: 0, pagesTotal: 0, score: null });
 
     browser = await launchBrowser();
 
     const pages = await discoverPages(browser, baseUrl, maxPages, basicAuth);
     const pagesTotal = pages.length;
-    updateScan(scanId, { status: "scanning", pages_total: pagesTotal });
+    await updateScan(scanId, { status: "scanning", pages_total: pagesTotal });
     scanProgress.set(scanId, { phase: "scanning", message: `Scanning ${pagesTotal} page(s)...`, pagesScanned: 0, pagesTotal, score: null });
 
     let totalViolations = 0;
@@ -541,7 +541,7 @@ async function runMultiPageScan(
     for (let i = 0; i < pages.length; i++) {
       if (cancelledScans.has(scanId)) {
         cancelledScans.delete(scanId);
-        updateScan(scanId, { status: "cancelled" });
+        await updateScan(scanId, { status: "cancelled" });
         clearScanProgress(scanId);
         return;
       }
@@ -606,13 +606,13 @@ async function runMultiPageScan(
         totalPasses += pCount;
         totalIncomplete += iCount;
 
-        createScanPage(
+        await createScanPage(
           scanId, pageUrl, pageTitle, pageScore,
           vCount, pCount, iCount,
           JSON.stringify({ violations, passes, incomplete }),
         );
       } catch (err) {
-        createScanPage(scanId, pageUrl, "Error", 0, 0, 0, 0,
+        await createScanPage(scanId, pageUrl, "Error", 0, 0, 0, 0,
           JSON.stringify({ error: err instanceof Error ? err.message : "Page scan failed" }),
         );
       } finally {
@@ -621,12 +621,12 @@ async function runMultiPageScan(
 
       const pagesScanned = i + 1;
       const runningScore = calculateScore(totalViolations, totalPasses);
-      updateScan(scanId, { pages_scanned: pagesScanned, total_violations: totalViolations, total_passes: totalPasses, total_incomplete: totalIncomplete, overall_score: runningScore });
+      await updateScan(scanId, { pages_scanned: pagesScanned, total_violations: totalViolations, total_passes: totalPasses, total_incomplete: totalIncomplete, overall_score: runningScore });
       scanProgress.set(scanId, { phase: "scanning", message: `Scanned ${pagesScanned}/${pagesTotal}`, pagesScanned, pagesTotal, score: runningScore });
     }
 
     const overallScore = calculateScore(totalViolations, totalPasses);
-    updateScan(scanId, {
+    await updateScan(scanId, {
       status: "completed",
       overall_score: overallScore,
       completed_at: new Date().toISOString(),

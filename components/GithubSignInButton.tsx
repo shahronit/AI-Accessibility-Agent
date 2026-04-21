@@ -1,8 +1,19 @@
 "use client";
 
 import { useState } from "react";
-import { signIn } from "next-auth/react";
 import { Loader2 } from "lucide-react";
+import { signInWithPopup } from "firebase/auth";
+import { getClientAuth, githubProvider } from "@/lib/firebase/client";
+
+/**
+ * Standalone "Sign in with GitHub" button kept as a thin compatibility
+ * surface. Most sign-in flow now lives in `<SignInPanel>` (which offers
+ * email/password + Google + GitHub from one place). This wrapper exists
+ * for any header / inline CTA that just wants the GitHub OAuth button.
+ *
+ * Mirrors the contract of the old NextAuth-backed component: same
+ * `callbackUrl` prop, same visible label.
+ */
 
 interface Props {
   callbackUrl: string;
@@ -25,28 +36,49 @@ function GithubMark({ className }: { className?: string }) {
 
 export function GithubSignInButton({ callbackUrl }: Props) {
   const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   return (
-    <button
-      type="button"
-      disabled={pending}
-      onClick={async () => {
-        setPending(true);
-        try {
-          await signIn("github", { callbackUrl });
-        } catch {
-          setPending(false);
-        }
-      }}
-      className="bg-primary text-primary-foreground hover:bg-primary/90 inline-flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium shadow-sm transition-colors disabled:opacity-50"
-      aria-label="Sign in with GitHub"
-    >
-      {pending ? (
-        <Loader2 className="size-4 animate-spin" aria-hidden />
-      ) : (
-        <GithubMark className="size-4" />
-      )}
-      Sign in with GitHub
-    </button>
+    <div className="space-y-2">
+      <button
+        type="button"
+        disabled={pending}
+        onClick={async () => {
+          setPending(true);
+          setError(null);
+          try {
+            const auth = getClientAuth();
+            const cred = await signInWithPopup(auth, githubProvider);
+            const idToken = await cred.user.getIdToken();
+            const res = await fetch("/api/auth/session", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ idToken }),
+            });
+            if (!res.ok) throw new Error("Could not establish session.");
+            if (typeof window !== "undefined") {
+              window.location.assign(callbackUrl);
+            }
+          } catch (err) {
+            setError(err instanceof Error ? err.message : "Sign-in failed.");
+            setPending(false);
+          }
+        }}
+        className="bg-primary text-primary-foreground hover:bg-primary/90 inline-flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium shadow-sm transition-colors disabled:opacity-50"
+        aria-label="Sign in with GitHub"
+      >
+        {pending ? (
+          <Loader2 className="size-4 animate-spin" aria-hidden />
+        ) : (
+          <GithubMark className="size-4" />
+        )}
+        Sign in with GitHub
+      </button>
+      {error ? (
+        <p className="text-xs text-red-400" role="alert">
+          {error}
+        </p>
+      ) : null}
+    </div>
   );
 }

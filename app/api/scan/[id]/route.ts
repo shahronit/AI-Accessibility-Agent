@@ -10,12 +10,12 @@ export async function GET(
   const { id } = await params;
   const userId = await getCurrentUserId();
 
-  const scan = getScanById(id);
+  const scan = await getScanById(id);
   if (!scan || scan.user_id !== userId) {
     return NextResponse.json({ error: "Scan not found" }, { status: 404 });
   }
 
-  const pages = getScanPages(id);
+  const pages = await getScanPages(id);
 
   return NextResponse.json({ scan, pages });
 }
@@ -27,7 +27,7 @@ export async function DELETE(
   const { id } = await params;
   const userId = await getCurrentUserId();
 
-  const scan = getScanById(id);
+  const scan = await getScanById(id);
   if (!scan || scan.user_id !== userId) {
     return NextResponse.json({ error: "Scan not found" }, { status: 404 });
   }
@@ -38,7 +38,7 @@ export async function DELETE(
   }
 
   requestCancelScan(id);
-  updateScan(id, { status: "cancelled" });
+  await updateScan(id, { status: "cancelled" });
 
   return NextResponse.json({ message: "Scan cancelled" });
 }
