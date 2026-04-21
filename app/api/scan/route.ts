@@ -15,6 +15,7 @@ import { createScan, updateScan, createScanPage, calculateScore } from "@/lib/db
 import { discoverPages } from "@/lib/crawler";
 import { enforceRateLimit, scanLimiter } from "@/lib/rateLimit";
 import { runIbmChecker } from "@/lib/ibmChecker";
+import { gotoWithSoftIdle } from "@/lib/pageNavigation";
 import {
   getCachedScan,
   saveScan,
@@ -79,21 +80,62 @@ function getAxeSource(): string {
  *   2. Even if CSP slips through (race conditions, frame boundaries),
  *      we fall back to `page.evaluate(axeSource)` here, which executes
  *      via CDP `Runtime.evaluate` and is not subject to page CSP.
+ *
+ * Self-redirects ("Execution context was destroyed") are also retried
+ * once after the new document settles — common on booking flows where
+ * the entry URL bounces through a session/login redirect.
  */
-async function ensureAxeLoaded(page: Page): Promise<void> {
+const EXECUTION_CONTEXT_DESTROYED = "Execution context was destroyed";
+
+function isExecutionContextDestroyedError(err: unknown): boolean {
+  return err instanceof Error && err.message.includes(EXECUTION_CONTEXT_DESTROYED);
+}
+
+async function ensureAxeLoaded(page: Page, retried = false): Promise<void> {
   const source = getAxeSource();
   try {
     await page.addScriptTag({ content: source });
-  } catch {
-    // addScriptTag throws on some sandboxed or about:blank frames.
-    // Fall through to the evaluate-based fallback below.
+  } catch (err) {
+    if (!retried && isExecutionContextDestroyedError(err)) {
+      // The page navigated underneath us mid-injection (meta refresh,
+      // JS redirect to login, etc.). Wait for the new document to be
+      // ready, then retry once against the fresh execution context.
+      await page
+        .waitForFunction(() => document.readyState !== "loading", { timeout: 10_000 })
+        .catch(() => undefined);
+      return ensureAxeLoaded(page, true);
+    }
+    // Otherwise: addScriptTag may have thrown on a sandboxed/about:blank
+    // frame — fall through to the evaluate-based fallback below.
   }
-  const ok = await page.evaluate(() => typeof (window as { axe?: unknown }).axe !== "undefined");
+
+  let ok = false;
+  try {
+    ok = await page.evaluate(() => typeof (window as { axe?: unknown }).axe !== "undefined");
+  } catch (err) {
+    if (!retried && isExecutionContextDestroyedError(err)) {
+      await page
+        .waitForFunction(() => document.readyState !== "loading", { timeout: 10_000 })
+        .catch(() => undefined);
+      return ensureAxeLoaded(page, true);
+    }
+    throw err;
+  }
   if (ok) return;
 
   // CSP-bypass fallback: run the axe source directly in the page's
   // execution context via CDP.
-  await page.evaluate(source);
+  try {
+    await page.evaluate(source);
+  } catch (err) {
+    if (!retried && isExecutionContextDestroyedError(err)) {
+      await page
+        .waitForFunction(() => document.readyState !== "loading", { timeout: 10_000 })
+        .catch(() => undefined);
+      return ensureAxeLoaded(page, true);
+    }
+    throw err;
+  }
   const okAfter = await page.evaluate(
     () => typeof (window as { axe?: unknown }).axe !== "undefined",
   );
@@ -241,7 +283,11 @@ export async function POST(req: NextRequest) {
       await page.setCookie(...cookiesToSet);
     }
 
-    await page.goto(targetUrl, { waitUntil: "networkidle2", timeout: 55_000 });
+    // See lib/pageNavigation.ts for why this isn't `networkidle2`.
+    await gotoWithSoftIdle(page, targetUrl, {
+      navigationTimeoutMs: 60_000,
+      settleTimeoutMs: 8_000,
+    });
 
     if (deepScan) {
       await delay(600);
@@ -438,6 +484,21 @@ export async function POST(req: NextRequest) {
       message =
         "The target site has an invalid TLS certificate. Use a public, valid HTTPS URL or check the staging certificate chain.";
       status = 502;
+    } else if (message.includes(EXECUTION_CONTEXT_DESTROYED)) {
+      message =
+        "The page kept redirecting itself while loading (likely a sign-in or session bounce that never settles). Try the final URL the browser lands on, or supply credentials under “Page may need a sign-in”.";
+      status = 502;
+    } else if (
+      message.includes("Navigation timeout") ||
+      message.includes("ERR_TIMED_OUT") ||
+      message.includes("ERR_CONNECTION_TIMED_OUT")
+    ) {
+      // We already use a tolerant `domcontentloaded` strategy (see
+      // lib/pageNavigation.ts), so a hard timeout means the server
+      // never even sent a response document — DNS, TCP/TLS, or 5xx.
+      message =
+        "The page took too long to respond. The server may be unreachable, very slow, or behind a sign-in wall — try a more specific URL within the site, check your VPN/network, or supply credentials under “Page may need a sign-in”.";
+      status = 504;
     } else if (message.toLowerCase().includes("timeout")) {
       status = 504;
     }
@@ -502,7 +563,10 @@ async function runMultiPageScan(
         await page.setBypassCSP(true);
         if (cookiesToSet.length > 0) await page.setCookie(...cookiesToSet);
 
-        await page.goto(pageUrl, { waitUntil: "networkidle2", timeout: 45_000 });
+        await gotoWithSoftIdle(page, pageUrl, {
+          navigationTimeoutMs: 50_000,
+          settleTimeoutMs: 4_000,
+        });
 
         if (deepScan) {
           await delay(400);

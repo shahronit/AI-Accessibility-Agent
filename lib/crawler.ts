@@ -1,5 +1,6 @@
 import type { Browser } from "puppeteer-core";
 import { assertSafeUrl } from "@/lib/ssrf-guard";
+import { gotoWithSoftIdle } from "@/lib/pageNavigation";
 
 const SKIP_EXTENSIONS = new Set([
   ".pdf", ".jpg", ".jpeg", ".png", ".gif", ".svg", ".webp", ".ico",
@@ -72,7 +73,11 @@ async function trySitemap(
       await page.authenticate({ username: basicAuth.username, password: basicAuth.password });
     }
     const sitemapUrl = `${origin}/sitemap.xml`;
-    const response = await page.goto(sitemapUrl, { waitUntil: "networkidle2", timeout: 10_000 });
+    // Sitemap is just static XML; no need to wait for any settle.
+    const response = await gotoWithSoftIdle(page, sitemapUrl, {
+      navigationTimeoutMs: 12_000,
+      settleTimeoutMs: 1_000,
+    });
     if (response && response.ok()) {
       const text = await page.evaluate(() => document.body?.innerText || "");
       const matches = text.match(/<loc>\s*(https?:\/\/[^<\s]+)\s*<\/loc>/gi);
@@ -126,7 +131,11 @@ export async function discoverPages(
       if (basicAuth) {
         await page.authenticate({ username: basicAuth.username, password: basicAuth.password });
       }
-      await page.goto(baseUrl, { waitUntil: "networkidle2", timeout: 15_000 });
+      // Need links rendered, so allow a short settle for SPA hydration.
+      await gotoWithSoftIdle(page, baseUrl, {
+        navigationTimeoutMs: 18_000,
+        settleTimeoutMs: 3_000,
+      });
       const hrefs = await page.evaluate(() =>
         Array.from(document.querySelectorAll("a[href]"), (a) => (a as HTMLAnchorElement).href),
       );
