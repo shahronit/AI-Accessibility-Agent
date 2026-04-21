@@ -20,6 +20,12 @@ export type NewScanOptions = {
   requiresLogin: boolean;
   /** Parsed cookie jar; server validates domains against the scan URL. */
   cookies?: ScanSetCookie[];
+  /**
+   * HTTP Basic / Digest credentials for the target site (NOT for this app).
+   * Only included when both fields are non-empty. Sent in the request body
+   * once per scan and never persisted by the client.
+   */
+  basicAuth?: { username: string; password: string };
   /** Multi-page crawl + scan (requires auth) */
   multiPage?: boolean;
   /** Max pages for multi-page scan */
@@ -60,6 +66,8 @@ export function NewScanLayout({
   const [multiPage, setMultiPage] = useState(false);
   const [maxPages, setMaxPages] = useState(5);
   const [cookieImportText, setCookieImportText] = useState("");
+  const [basicAuthUser, setBasicAuthUser] = useState("");
+  const [basicAuthPass, setBasicAuthPass] = useState("");
 
   const debouncedUrl = useDebouncedValue(url, 400);
   const urlValidation = useMemo(() => validateScanUrl(debouncedUrl), [debouncedUrl]);
@@ -85,6 +93,14 @@ export function NewScanLayout({
     }
   }, [requiresLogin, cookieImportText]);
 
+  const basicAuth = useMemo(() => {
+    if (!requiresLogin) return undefined;
+    const u = basicAuthUser.trim();
+    const p = basicAuthPass; // password may legitimately have leading/trailing spaces
+    if (!u || !p) return undefined;
+    return { username: u, password: p };
+  }, [requiresLogin, basicAuthUser, basicAuthPass]);
+
   const scanOpts = useMemo(
     (): NewScanOptions => ({
       wcagPreset,
@@ -94,10 +110,11 @@ export function NewScanLayout({
         cookieImportState.error || !cookieImportState.cookies?.length
           ? undefined
           : cookieImportState.cookies,
+      basicAuth,
       multiPage: isAuthenticated && multiPage ? true : undefined,
       maxPages: isAuthenticated && multiPage ? maxPages : undefined,
     }),
-    [wcagPreset, deepScan, requiresLogin, cookieImportState.error, cookieImportState.cookies, isAuthenticated, multiPage, maxPages],
+    [wcagPreset, deepScan, requiresLogin, cookieImportState.error, cookieImportState.cookies, basicAuth, isAuthenticated, multiPage, maxPages],
   );
 
   const loginPrepUrl = useMemo(() => validateScanUrl(url), [url]);
@@ -219,7 +236,11 @@ export function NewScanLayout({
             onChange={(e) => {
               const checked = e.target.checked;
               setRequiresLogin(checked);
-              if (!checked) setCookieImportText("");
+              if (!checked) {
+                setCookieImportText("");
+                setBasicAuthUser("");
+                setBasicAuthPass("");
+              }
             }}
             disabled={scanLoading}
             className="accent-emerald-500 mt-0.5 size-4 shrink-0 rounded border-white/20"
@@ -286,6 +307,87 @@ export function NewScanLayout({
                 {copyHint}
               </p>
             ) : null}
+
+            <details
+              className="border-border/60 mt-4 rounded-lg border border-white/10 bg-black/20 p-3"
+              open={Boolean(basicAuthUser || basicAuthPass)}
+            >
+              <summary className="cursor-pointer text-sm font-medium text-zinc-200">
+                HTTP Basic auth (staging / preview environments)
+              </summary>
+              <div className="text-muted-foreground mt-3 space-y-3 text-xs leading-relaxed">
+                <p>
+                  Use this when the site shows a browser pop-up asking for a username and password,
+                  or when a scan fails with{" "}
+                  <code className="text-zinc-400">net::ERR_INVALID_AUTH_CREDENTIALS</code>. The
+                  credentials are forwarded once to Puppeteer&apos;s{" "}
+                  <code className="text-zinc-400">page.authenticate()</code>, used only for this
+                  scan, and never stored.
+                </p>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-1">
+                    <Label
+                      htmlFor="new-scan-basic-user"
+                      className="text-xs font-medium text-zinc-300"
+                    >
+                      Username
+                    </Label>
+                    <Input
+                      id="new-scan-basic-user"
+                      type="text"
+                      autoComplete="off"
+                      spellCheck={false}
+                      value={basicAuthUser}
+                      onChange={(e) => setBasicAuthUser(e.target.value)}
+                      disabled={scanLoading}
+                      placeholder="staging-user"
+                      className="h-9 border-white/10 bg-black/40 font-mono text-xs"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label
+                      htmlFor="new-scan-basic-pass"
+                      className="text-xs font-medium text-zinc-300"
+                    >
+                      Password
+                    </Label>
+                    <Input
+                      id="new-scan-basic-pass"
+                      type="password"
+                      autoComplete="off"
+                      value={basicAuthPass}
+                      onChange={(e) => setBasicAuthPass(e.target.value)}
+                      disabled={scanLoading}
+                      placeholder="••••••••"
+                      className="h-9 border-white/10 bg-black/40 font-mono text-xs"
+                    />
+                  </div>
+                </div>
+                {basicAuthUser && !basicAuthPass ? (
+                  <p className="text-amber-300/90 text-xs" role="status">
+                    Password is required to send Basic auth.
+                  </p>
+                ) : null}
+                {basicAuthPass && !basicAuthUser ? (
+                  <p className="text-amber-300/90 text-xs" role="status">
+                    Username is required to send Basic auth.
+                  </p>
+                ) : null}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 text-xs text-zinc-400 hover:text-zinc-200"
+                  onClick={() => {
+                    setBasicAuthUser("");
+                    setBasicAuthPass("");
+                  }}
+                  disabled={scanLoading || (!basicAuthUser && !basicAuthPass)}
+                >
+                  Clear Basic auth
+                </Button>
+              </div>
+            </details>
 
             <details className="border-border/60 mt-4 rounded-lg border border-white/10 bg-black/20 p-3">
               <summary className="cursor-pointer text-sm font-medium text-zinc-200">

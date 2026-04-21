@@ -58,10 +58,19 @@ function prioritizePages(urls: string[]): string[] {
   });
 }
 
-async function trySitemap(browser: Browser, origin: string): Promise<string[]> {
+export type CrawlerBasicAuth = { username: string; password: string };
+
+async function trySitemap(
+  browser: Browser,
+  origin: string,
+  basicAuth?: CrawlerBasicAuth,
+): Promise<string[]> {
   const urls: string[] = [];
   const page = await browser.newPage();
   try {
+    if (basicAuth) {
+      await page.authenticate({ username: basicAuth.username, password: basicAuth.password });
+    }
     const sitemapUrl = `${origin}/sitemap.xml`;
     const response = await page.goto(sitemapUrl, { waitUntil: "networkidle2", timeout: 10_000 });
     if (response && response.ok()) {
@@ -87,18 +96,24 @@ async function trySitemap(browser: Browser, origin: string): Promise<string[]> {
 /**
  * Discover pages on a website by checking sitemap.xml and following links.
  * Returns up to `maxPages` validated, same-origin URLs.
+ *
+ * `basicAuth` is forwarded to every page Puppeteer opens so sites behind
+ * HTTP Basic / Digest auth (common for staging environments) can be
+ * crawled — without it the homepage `goto` fails with
+ * `net::ERR_INVALID_AUTH_CREDENTIALS` before any link is discovered.
  */
 export async function discoverPages(
   browser: Browser,
   baseUrl: string,
   maxPages: number,
+  basicAuth?: CrawlerBasicAuth,
 ): Promise<string[]> {
   const origin = new URL(baseUrl).origin;
   const found = new Set<string>();
   found.add(cleanUrl(origin, new URL(baseUrl).pathname));
 
   // 1. Try sitemap
-  const sitemapUrls = await trySitemap(browser, origin);
+  const sitemapUrls = await trySitemap(browser, origin, basicAuth);
   for (const u of sitemapUrls) {
     if (found.size >= maxPages * 2) break;
     found.add(u);
@@ -108,6 +123,9 @@ export async function discoverPages(
   if (found.size < maxPages) {
     const page = await browser.newPage();
     try {
+      if (basicAuth) {
+        await page.authenticate({ username: basicAuth.username, password: basicAuth.password });
+      }
       await page.goto(baseUrl, { waitUntil: "networkidle2", timeout: 15_000 });
       const hrefs = await page.evaluate(() =>
         Array.from(document.querySelectorAll("a[href]"), (a) => (a as HTMLAnchorElement).href),

@@ -98,12 +98,30 @@ export const WcagPresetSchema = z.string().min(1).max(32);
  * which is run immediately after Zod validation in the route handler.
  * Re-encoding those rules here would mean two places to maintain.
  */
+/**
+ * HTTP Basic / Digest credentials for the scan target.
+ *
+ * Forwarded straight to Puppeteer's `page.authenticate()`, which handles
+ * the WWW-Authenticate handshake (Chrome surfaces a missing/wrong
+ * password as `net::ERR_INVALID_AUTH_CREDENTIALS`). Sent only over the
+ * scan request body, never persisted server-side, and excluded from the
+ * scan cache key so credentials never leak across users.
+ */
+export const ScanBasicAuthSchema = z.object({
+  username: z.string().min(1).max(256),
+  password: z.string().min(1).max(512),
+});
+
+export type ScanBasicAuth = z.infer<typeof ScanBasicAuthSchema>;
+
 export const ScanRequestSchema = z.object({
   url: z.string().min(1).max(2048),
   wcagPreset: WcagPresetSchema.optional(),
   deepScan: z.boolean().optional(),
   requiresLogin: z.boolean().optional(),
   cookies: z.array(z.unknown()).max(60).optional().nullable(),
+  /** HTTP Basic / Digest credentials forwarded to Puppeteer.authenticate(). */
+  basicAuth: ScanBasicAuthSchema.optional().nullable(),
   includeAxeOverview: z.boolean().optional(),
   multiPage: z.boolean().optional(),
   maxPages: z.number().int().min(1).max(20).optional(),

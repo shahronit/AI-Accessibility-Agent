@@ -282,6 +282,9 @@ export default function ScanWorkspacePage() {
             deepScan: o.deepScan,
             requiresLogin: o.requiresLogin,
             ...(Array.isArray(o.cookies) && o.cookies.length > 0 ? { cookies: o.cookies } : {}),
+            ...(o.basicAuth?.username && o.basicAuth?.password
+              ? { basicAuth: o.basicAuth }
+              : {}),
           }),
           signal: ac.signal,
         });

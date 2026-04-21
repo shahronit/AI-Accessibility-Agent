@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import puppeteer from "puppeteer-core";
+import puppeteer, { type Page } from "puppeteer-core";
 import { getPuppeteerLaunchConfig } from "@/lib/browserLaunch";
 import { summarizeChromeAxTree } from "@/lib/chromeAxTreeSummary";
 import { SCAN_ENGINE_INFO } from "@/lib/scanEnginesMeta";
@@ -41,6 +42,66 @@ async function launchBrowser() {
     executablePath,
     headless,
   });
+}
+
+/**
+ * axe-core source loaded once per process. Cached so we don't re-read
+ * ~700 KB from disk on every scan, and so we can fall back to a direct
+ * `evaluate()` injection when `addScriptTag` is silently swallowed by a
+ * page-level Content-Security-Policy.
+ *
+ * NOTE: `path.join(process.cwd(), ...)` is used intentionally instead of
+ * `require.resolve` — the latter is rewritten by Turbopack/webpack into a
+ * synthetic "[externals]" path that does not exist on disk at runtime.
+ * `process.cwd()` resolves to the project root in `next dev` and to the
+ * standalone server root in Docker (Next's file tracer copies the needed
+ * portion of `node_modules/axe-core` alongside the server bundle).
+ */
+let _axeSource: string | null = null;
+function getAxeSource(): string {
+  if (_axeSource) return _axeSource;
+  const resolved = path.join(process.cwd(), "node_modules", "axe-core", "axe.min.js");
+  _axeSource = fs.readFileSync(resolved, "utf8");
+  return _axeSource;
+}
+
+/**
+ * Inject axe-core into the page and confirm `window.axe` is wired up.
+ *
+ * Some sites ship a strict Content-Security-Policy (`script-src 'self'`)
+ * that silently blocks `<script>` tags injected by Puppeteer. The browser
+ * accepts the addScriptTag call but the script never executes, leaving
+ * `window.axe === undefined` and producing the cryptic
+ * "axe-core did not load in the page context" error.
+ *
+ * We defend against that two ways:
+ *   1. `setBypassCSP(true)` is called BEFORE `page.goto` (in the caller).
+ *   2. Even if CSP slips through (race conditions, frame boundaries),
+ *      we fall back to `page.evaluate(axeSource)` here, which executes
+ *      via CDP `Runtime.evaluate` and is not subject to page CSP.
+ */
+async function ensureAxeLoaded(page: Page): Promise<void> {
+  const source = getAxeSource();
+  try {
+    await page.addScriptTag({ content: source });
+  } catch {
+    // addScriptTag throws on some sandboxed or about:blank frames.
+    // Fall through to the evaluate-based fallback below.
+  }
+  const ok = await page.evaluate(() => typeof (window as { axe?: unknown }).axe !== "undefined");
+  if (ok) return;
+
+  // CSP-bypass fallback: run the axe source directly in the page's
+  // execution context via CDP.
+  await page.evaluate(source);
+  const okAfter = await page.evaluate(
+    () => typeof (window as { axe?: unknown }).axe !== "undefined",
+  );
+  if (!okAfter) {
+    throw new Error(
+      "axe-core could not be injected into the page (CSP and direct evaluate both failed)",
+    );
+  }
 }
 
 // In-memory progress for SSE streaming of multi-page scans
@@ -97,11 +158,17 @@ export async function POST(req: NextRequest) {
     }
     const cookiesToSet = cookieParse.cookies;
 
+    // HTTP Basic / Digest credentials. Validated by Zod above; we just
+    // narrow `null` → `undefined` here so downstream code can use
+    // optional chaining uniformly.
+    const basicAuth = body.basicAuth ?? undefined;
+
     // ---- Cache lookup (single-page scans only) ----
     // Cache key intentionally excludes the per-request cookie payload so
     // logged-in test sessions never poison anonymous scans, and includes
     // anything that materially changes the scan output (preset, deep scan,
-    // login flag, IBM toggle).
+    // login flag, IBM toggle). Basic-auth scans bypass the cache entirely
+    // so credentials never round-trip through stored payloads.
     const forceBypass =
       req.nextUrl.searchParams.get("force") === "true" || Boolean(body.force);
     const cacheOptions: Record<string, unknown> = {
@@ -111,7 +178,7 @@ export async function POST(req: NextRequest) {
       ibm: process.env.IBM_CHECKER_ENABLED?.trim().toLowerCase() !== "false",
     };
     const isSinglePage = !Boolean(body.multiPage);
-    if (isSinglePage && !forceBypass && cookiesToSet.length === 0) {
+    if (isSinglePage && !forceBypass && cookiesToSet.length === 0 && !basicAuth) {
       const cached = await getCachedScan(targetUrl, cacheOptions);
       if (cached && Date.now() - cached.cachedAt <= 1000 * 60 * 10) {
         const ageSeconds = Math.round((Date.now() - cached.cachedAt) / 1000);
@@ -133,7 +200,7 @@ export async function POST(req: NextRequest) {
       const scan = createScan(userId, targetUrl, wcagPreset, maxPages);
 
       // Fire-and-forget background scan
-      runMultiPageScan(scan.id, targetUrl, wcagPreset, tags, maxPages, deepScan, cookiesToSet).catch(
+      runMultiPageScan(scan.id, targetUrl, wcagPreset, tags, maxPages, deepScan, cookiesToSet, basicAuth).catch(
         (err) => {
           console.error(`Multi-page scan ${scan.id} failed:`, err);
           updateScan(scan.id, {
@@ -147,13 +214,28 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ scanId: scan.id, status: "pending" }, { status: 202 });
     }
 
-    // ---- Original single-page scan flow (unchanged) ----
+    // ---- Original single-page scan flow ----
     browser = await launchBrowser();
     const page = await browser.newPage();
 
     await page.setUserAgent(
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 A11yAgent/1.0",
     );
+
+    // HTTP Basic / Digest auth. Must be set BEFORE goto — Puppeteer hooks
+    // the WWW-Authenticate handshake at the network layer, so any nav that
+    // hits a 401 without prior `authenticate()` fails fast with
+    // `net::ERR_INVALID_AUTH_CREDENTIALS`.
+    if (basicAuth) {
+      await page.authenticate({
+        username: basicAuth.username,
+        password: basicAuth.password,
+      });
+    }
+
+    // Bypass page-level CSP BEFORE navigating so injected axe-core <script>
+    // tags are not silently blocked by sites with strict `script-src` policies.
+    await page.setBypassCSP(true);
 
     if (cookiesToSet.length > 0) {
       await page.setCookie(...cookiesToSet);
@@ -170,8 +252,7 @@ export async function POST(req: NextRequest) {
       await delay(400);
     }
 
-    const axePath = path.join(process.cwd(), "node_modules", "axe-core", "axe.min.js");
-    await page.addScriptTag({ path: axePath });
+    await ensureAxeLoaded(page);
 
     const axeOpts: Record<string, unknown> = {
       resultTypes: ["violations", "passes", "incomplete"] as const,
@@ -343,15 +424,24 @@ export async function POST(req: NextRequest) {
       headers: { "X-Cache": "MISS" },
     });
   } catch (err) {
+    console.error("[scan] POST /api/scan failed:", err);
     let message = err instanceof Error ? err.message : "Scan failed";
+    let status = 500;
     if (message.includes("ENOENT") || message.includes("ENOEXEC")) {
       message =
         "Could not start the browser. On macOS/Windows the app uses your installed Chrome—install Google Chrome or set PUPPETEER_EXECUTABLE_PATH. (Bundled Chromium is for Linux/serverless only.)";
+    } else if (message.includes("ERR_INVALID_AUTH_CREDENTIALS")) {
+      message =
+        "The page requires sign-in. Enable “Page may need a sign-in” and provide the site's HTTP Basic username and password — or paste session cookies after signing in manually.";
+      status = 401;
+    } else if (message.includes("ERR_CERT_") || message.includes("CERT_AUTHORITY_INVALID")) {
+      message =
+        "The target site has an invalid TLS certificate. Use a public, valid HTTPS URL or check the staging certificate chain.";
+      status = 502;
+    } else if (message.toLowerCase().includes("timeout")) {
+      status = 504;
     }
-    return NextResponse.json(
-      { error: message },
-      { status: message.toLowerCase().includes("timeout") ? 504 : 500 },
-    );
+    return NextResponse.json({ error: message }, { status });
   } finally {
     if (browser) {
       await browser.close().catch(() => undefined);
@@ -369,6 +459,7 @@ async function runMultiPageScan(
   maxPages: number,
   deepScan: boolean,
   cookiesToSet: Array<{ name: string; value: string; domain: string; path?: string }>,
+  basicAuth?: { username: string; password: string },
 ) {
   let browser: Awaited<ReturnType<typeof puppeteer.launch>> | undefined;
   try {
@@ -377,7 +468,7 @@ async function runMultiPageScan(
 
     browser = await launchBrowser();
 
-    const pages = await discoverPages(browser, baseUrl, maxPages);
+    const pages = await discoverPages(browser, baseUrl, maxPages, basicAuth);
     const pagesTotal = pages.length;
     updateScan(scanId, { status: "scanning", pages_total: pagesTotal });
     scanProgress.set(scanId, { phase: "scanning", message: `Scanning ${pagesTotal} page(s)...`, pagesScanned: 0, pagesTotal, score: null });
@@ -385,7 +476,6 @@ async function runMultiPageScan(
     let totalViolations = 0;
     let totalPasses = 0;
     let totalIncomplete = 0;
-    const axePath = path.join(process.cwd(), "node_modules", "axe-core", "axe.min.js");
 
     for (let i = 0; i < pages.length; i++) {
       if (cancelledScans.has(scanId)) {
@@ -401,6 +491,15 @@ async function runMultiPageScan(
         await page.setUserAgent(
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 A11yAgent/1.0",
         );
+        // HTTP Basic / Digest auth must be set BEFORE goto; see single-page flow.
+        if (basicAuth) {
+          await page.authenticate({
+            username: basicAuth.username,
+            password: basicAuth.password,
+          });
+        }
+        // Same CSP-bypass guard as the single-page flow — see ensureAxeLoaded.
+        await page.setBypassCSP(true);
         if (cookiesToSet.length > 0) await page.setCookie(...cookiesToSet);
 
         await page.goto(pageUrl, { waitUntil: "networkidle2", timeout: 45_000 });
@@ -414,7 +513,7 @@ async function runMultiPageScan(
           await delay(300);
         }
 
-        await page.addScriptTag({ path: axePath });
+        await ensureAxeLoaded(page);
 
         const axeOpts: Record<string, unknown> = {
           resultTypes: ["violations", "passes", "incomplete"] as const,
