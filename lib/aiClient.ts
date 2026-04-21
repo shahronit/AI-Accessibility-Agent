@@ -537,6 +537,10 @@ export function selectExplainModel(issue: ScanIssue): string {
   return issue.impact === "critical" ? aaCriticalModel : aaDefaultModel;
 }
 
+/** System prompt shared by `explainIssue` and `explainIssueStream`. */
+const EXPLAIN_SYSTEM_PROMPT =
+  "You are an accessibility expert. Follow the user message structure exactly. Issue data at the top is **TOON** (Token-Oriented Object Notation)—parse it as structured fields. Write in professional corporate prose: no Markdown hash headings, no asterisk or underscore emphasis. Keep tables and the required ADD/REMOVE lines as specified.";
+
 export async function explainIssue(issue: ScanIssue): Promise<{ text: string; model: string }> {
   const userContent = buildExplainPrompt(issue);
   const assemblyModel = issue.impact === "critical" ? aaCriticalModel : aaDefaultModel;
@@ -549,14 +553,151 @@ export async function explainIssue(issue: ScanIssue): Promise<{ text: string; mo
     geminiModel,
     max_tokens: 4096,
     messages: [
-      {
-        role: "system",
-        content:
-          "You are an accessibility expert. Follow the user message structure exactly. Issue data at the top is **TOON** (Token-Oriented Object Notation)—parse it as structured fields. Write in professional corporate prose: no Markdown hash headings, no asterisk or underscore emphasis. Keep tables and the required ADD/REMOVE lines as specified.",
-      },
+      { role: "system", content: EXPLAIN_SYSTEM_PROMPT },
       { role: "user", content: userContent },
     ],
   });
+}
+
+/**
+ * Streaming sibling of `explainIssue`. Returns a `ReadableStream<Uint8Array>`
+ * of raw markdown text deltas plus the resolved `model` id so the route
+ * handler can set `X-AI-Model`.
+ *
+ * Why streaming for the explain tab?
+ *   The non-streaming Anthropic call returns NOTHING until all 4096 tokens
+ *   are generated, which on a slow LLM (rate-limited, 5xx-retried, or just
+ *   a heavy region) can routinely exceed 120 s — producing the user-visible
+ *   "Request timed out after 120s" error. With streaming the user sees
+ *   text within ~1 s and the perception of "hang" disappears even when the
+ *   full generation takes a while.
+ *
+ * Provider selection follows the same fallback chain as `runChatCompletion`:
+ *   - LLM_PROVIDER=anthropic -> Anthropic SSE stream
+ *   - LLM_PROVIDER=gemini    -> Gemini SSE stream (no in-stream retry; a
+ *                               fresh request restarts at most once on
+ *                               transient failures, same as the
+ *                               testing-analysis stream).
+ *   - default / assemblyai   -> AssemblyAI is non-streaming, so we emit
+ *                               the full response as a single chunk to
+ *                               keep the route/client protocol uniform.
+ *
+ * `signal` propagates client disconnects to the underlying SDK so we never
+ * leak an in-flight Anthropic request when the user navigates away.
+ */
+export async function explainIssueStream(
+  issue: ScanIssue,
+  signal?: AbortSignal,
+): Promise<{ stream: ReadableStream<Uint8Array>; model: string }> {
+  const userContent = buildExplainPrompt(issue);
+  const assemblyModel = issue.impact === "critical" ? aaCriticalModel : aaDefaultModel;
+  const anthropicModel = issue.impact === "critical" ? antOpusModel : antSonnetModel;
+  const geminiModel = issue.impact === "critical" ? gemCriticalModel : gemDefaultModel;
+  const maxTokens = 4096;
+
+  const messages: GatewayMessage[] = [
+    { role: "system", content: EXPLAIN_SYSTEM_PROMPT },
+    { role: "user", content: userContent },
+  ];
+
+  const provider = resolvedLlmProvider();
+
+  if (provider === "anthropic") {
+    if (!hasAnthropicKey()) {
+      throw new Error(
+        "LLM_PROVIDER is anthropic but ANTHROPIC_API_KEY is missing. Add it from https://console.anthropic.com/ or use LLM_PROVIDER=gemini with GEMINI_API_KEY.",
+      );
+    }
+    const client = getAnthropicClient();
+    const { system, conversation } = splitSystemAndConversation(messages);
+    const iter = anthropicTextStream(client, {
+      model: anthropicModel,
+      max_tokens: maxTokens,
+      ...(system ? { system } : {}),
+      messages: conversation,
+      ...(signal ? { signal } : {}),
+    });
+    return { stream: streamFromTextIterable(iter, { signal }), model: anthropicModel };
+  }
+
+  if (provider === "gemini") {
+    if (!hasGeminiKey()) {
+      throw new Error(
+        "LLM_PROVIDER is gemini but GEMINI_API_KEY is missing. Create a key at https://aistudio.google.com/apikey or set LLM_PROVIDER to anthropic or assemblyai.",
+      );
+    }
+    const apiKey = process.env.GEMINI_API_KEY!.trim();
+    const { systemInstruction, dialogue } = splitSystemAndNonSystem(messages);
+    if (dialogue.length === 0) {
+      throw new Error("No user or assistant content to send to Gemini");
+    }
+    const lastUser = dialogue[dialogue.length - 1];
+    const prior = dialogue.slice(0, -1);
+    const history: Content[] = prior.map((m) => ({
+      role: m.role === "assistant" ? "model" : "user",
+      parts: [{ text: m.content }],
+    }));
+    const iter = geminiTextStream({
+      apiKey,
+      model: geminiModel,
+      ...(systemInstruction ? { systemInstruction } : {}),
+      history,
+      lastUserText: lastUser.content,
+      maxOutputTokens: maxTokens,
+    });
+    return { stream: streamFromTextIterable(iter, { signal }), model: geminiModel };
+  }
+
+  // AssemblyAI gateway: no streaming. Same handoff pattern as
+  // analyzeScanForTestingAgentStream — fall through to a streaming-
+  // capable provider on LeMUR / access errors when one is configured.
+  try {
+    const { text, model } = await chatCompletionAssemblyAI({
+      model: assemblyModel,
+      messages,
+      max_tokens: maxTokens,
+    });
+    const single: AsyncIterable<string> = (async function* () {
+      yield text;
+    })();
+    return { stream: streamFromTextIterable(single, { signal }), model };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (isLemurOrAccessError(msg)) {
+      if (hasAnthropicKey()) {
+        const client = getAnthropicClient();
+        const { system, conversation } = splitSystemAndConversation(messages);
+        const iter = anthropicTextStream(client, {
+          model: anthropicModel,
+          max_tokens: maxTokens,
+          ...(system ? { system } : {}),
+          messages: conversation,
+          ...(signal ? { signal } : {}),
+        });
+        return { stream: streamFromTextIterable(iter, { signal }), model: anthropicModel };
+      }
+      if (hasGeminiKey()) {
+        const apiKey = process.env.GEMINI_API_KEY!.trim();
+        const { systemInstruction, dialogue } = splitSystemAndNonSystem(messages);
+        const lastUser = dialogue[dialogue.length - 1];
+        const prior = dialogue.slice(0, -1);
+        const history: Content[] = prior.map((m) => ({
+          role: m.role === "assistant" ? "model" : "user",
+          parts: [{ text: m.content }],
+        }));
+        const iter = geminiTextStream({
+          apiKey,
+          model: geminiModel,
+          ...(systemInstruction ? { systemInstruction } : {}),
+          history,
+          lastUserText: lastUser?.content ?? "",
+          maxOutputTokens: maxTokens,
+        });
+        return { stream: streamFromTextIterable(iter, { signal }), model: geminiModel };
+      }
+    }
+    throw e;
+  }
 }
 
 export type ChatMessage = { role: "user" | "assistant"; content: string };

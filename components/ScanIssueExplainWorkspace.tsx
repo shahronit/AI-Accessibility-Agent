@@ -11,7 +11,7 @@ import { ChatPanel, type ChatSendPayload } from "@/components/ChatPanel";
 import { FormattedAiText } from "@/components/FormattedAiText";
 import type { ExplainWindowPayloadV1 } from "@/lib/explainWindowTransfer";
 import { readAndConsumeExplainWindowPayload } from "@/lib/explainWindowTransfer";
-import { postAppJson, sanitizeIssueForApi } from "@/lib/clientApi";
+import { postAppJson, postAppStream, sanitizeIssueForApi } from "@/lib/clientApi";
 import { exportExplanationPdf } from "@/lib/exportReports";
 import { extractProfessionalSummary, sanitizeExplanationForDisplay } from "@/lib/formatAiOutput";
 import { cn } from "@/lib/utils";
@@ -57,18 +57,35 @@ export function ScanIssueExplainWorkspace() {
       return;
     }
     let cancelled = false;
+    const ac = new AbortController();
     setExplainLoading(true);
     setExplainError(null);
     setExplanation(null);
     setExplainModel(null);
     (async () => {
       try {
-        const data = await postAppJson<{ explanation?: string; model?: string }>("/api/ai-explain", {
-          issue: sanitizeIssueForApi(payload.issue!),
-        });
+        // Stream tokens as they arrive so the user sees progress
+        // immediately. The non-streaming Anthropic call buffers the full
+        // 4096-token response on the server, which on slow / rate-limited
+        // upstreams routinely tripped the client's 120 s timeout. With
+        // streaming the connection is alive and the perceived latency
+        // collapses to "first byte".
+        const result = await postAppStream(
+          "/api/ai-explain?stream=1",
+          { issue: sanitizeIssueForApi(payload.issue!) },
+          {
+            signal: ac.signal,
+            onText: (delta) => {
+              if (cancelled) return;
+              setExplanation((prev) => (prev ?? "") + delta);
+            },
+          },
+        );
         if (cancelled) return;
-        setExplanation(data.explanation ?? "");
-        setExplainModel(typeof data.model === "string" ? data.model : null);
+        setExplainModel(result.model);
+        if (!result.full) {
+          setExplanation("");
+        }
       } catch (e) {
         if (cancelled) return;
         setExplainError(e instanceof Error ? e.message : "Explanation failed");
@@ -78,6 +95,7 @@ export function ScanIssueExplainWorkspace() {
     })();
     return () => {
       cancelled = true;
+      ac.abort();
     };
   }, [payload]);
 
@@ -209,7 +227,7 @@ export function ScanIssueExplainWorkspace() {
               </div>
             </CardHeader>
             <CardContent className="space-y-3">
-              {explainLoading ? (
+              {explainLoading && !explanation ? (
                 <div className="space-y-3" aria-busy="true">
                   <p className="text-muted-foreground flex items-center gap-2 text-sm" role="status">
                     <Loader2 className="text-primary size-4 shrink-0 animate-spin" aria-hidden />
@@ -226,8 +244,23 @@ export function ScanIssueExplainWorkspace() {
                 </Alert>
               ) : null}
               {explanation ? (
-                <div className="max-h-[min(50vh,480px)] overflow-y-auto overflow-x-auto rounded-lg border border-white/10 bg-black/30 p-3">
-                  <FormattedAiText text={sanitizeExplanationForDisplay(explanation)} />
+                <div className="space-y-2">
+                  <div
+                    className="max-h-[min(50vh,480px)] overflow-y-auto overflow-x-auto rounded-lg border border-white/10 bg-black/30 p-3"
+                    aria-busy={explainLoading || undefined}
+                    aria-live={explainLoading ? "polite" : undefined}
+                  >
+                    <FormattedAiText text={sanitizeExplanationForDisplay(explanation)} />
+                  </div>
+                  {explainLoading ? (
+                    <p
+                      className="text-muted-foreground flex items-center gap-2 text-xs"
+                      role="status"
+                    >
+                      <Loader2 className="text-primary size-3.5 shrink-0 animate-spin" aria-hidden />
+                      Streaming explanation…
+                    </p>
+                  ) : null}
                 </div>
               ) : !explainLoading && !explainError ? (
                 <p className="text-muted-foreground text-sm">No explanation loaded.</p>
